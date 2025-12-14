@@ -3,18 +3,23 @@ import sys
 import asyncio
 import torch
 import torchaudio
-from transformers import Wav2Vec2ForSequenceClassification, AutoFeatureExtractor
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.base_worker import BaseWorker, StepMetrics
+from common.model_manager import get_model_manager
 
 # Load Model (Global to avoid reloading)
 print("Loading MMS LID Model...")
-MODEL_ID = "facebook/mms-lid-126"
-MODEL_VERSION = "1.0"  # Track model version for reproducibility
-processor = AutoFeatureExtractor.from_pretrained(MODEL_ID)
-model = Wav2Vec2ForSequenceClassification.from_pretrained(MODEL_ID)
+model_manager = get_model_manager()
+processor, model, model_metadata = model_manager.load_lid_model()
+
+# Validate model loaded correctly
+if not model_manager.validate_lid_model(processor, model):
+    raise RuntimeError("LID model validation failed")
+
+MODEL_ID = model_metadata["model_name"]
+MODEL_VERSION = model_metadata["model_version"]
 print("Model Loaded.")
 
 
