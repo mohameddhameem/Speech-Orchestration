@@ -2,19 +2,25 @@ import os
 import sys
 import asyncio
 import time
-from faster_whisper import WhisperModel
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.base_worker import BaseWorker, StepMetrics
+from common.model_manager import get_model_manager
 
 # Load Model (Global to avoid reloading)
 print("Loading Whisper V3 Large Model...")
-MODEL_NAME = "large-v3"
-MODEL_VERSION = "faster-whisper-0.10.0"  # Track library version
-DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
-COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
-model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
+model_manager = get_model_manager()
+model, model_metadata = model_manager.load_whisper_model()
+
+# Validate model loaded correctly
+if not model_manager.validate_whisper_model(model):
+    raise RuntimeError("Whisper model validation failed")
+
+MODEL_NAME = model_metadata["model_name"]
+MODEL_VERSION = model_metadata["model_version"]
+DEVICE = model_metadata["device"]
+COMPUTE_TYPE = model_metadata["compute_type"]
 print(f"Model Loaded. Device: {DEVICE}, Compute: {COMPUTE_TYPE}")
 
 
@@ -56,7 +62,9 @@ class WhisperWorker(BaseWorker):
         local_filename = f"/tmp/{job_id}.wav"
         
         # Record model info
-        metrics.model_name = f"whisper-{MODEL_NAME}"
+        # Note: MODEL_NAME from model_metadata already includes 'whisper-' prefix
+        # e.g., "whisper-large-v3" not just "large-v3"
+        metrics.model_name = MODEL_NAME
         metrics.model_version = MODEL_VERSION
         
         try:

@@ -1,0 +1,214 @@
+# Example: Worker Deployment with Persistent Model Cache
+#
+# This file shows how to configure workers to use the persistent model cache.
+# Apply these changes to your existing worker deployments (whisper-worker, lid-worker).
+#
+# Key changes:
+# 1. Add MODEL_CACHE_DIR environment variable
+# 2. Mount the persistent volume at /models
+# 3. Set readOnly: true for workers (they only need read access)
+
+---
+# Example for Whisper Worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speechflow-whisper-worker
+  namespace: speech-flow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-flow
+      component: whisper-worker
+  template:
+    metadata:
+      labels:
+        app: speech-flow
+        component: whisper-worker
+    spec:
+      # Use node selector to target GPU nodes
+      nodeSelector:
+        pool: gpu
+      # Tolerate GPU node taints
+      tolerations:
+      - key: sku
+        operator: Equal
+        value: gpu
+        effect: NoSchedule
+      containers:
+      - name: whisper-worker
+        image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
+        command: ["python", "whisper/worker.py"]
+        env:
+        # Service Bus configuration
+        - name: SERVICEBUS_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: speechflow-secrets
+              key: servicebus-connection-string
+        - name: WHISPER_QUEUE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: WHISPER_QUEUE_NAME
+        # Storage configuration
+        - name: AZURE_STORAGE_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: speechflow-secrets
+              key: storage-connection-string
+        - name: BLOB_CONTAINER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: BLOB_CONTAINER_NAME
+        - name: BLOB_CONTAINER_RESULTS
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: BLOB_CONTAINER_RESULTS
+        # Router queue
+        - name: ROUTER_QUEUE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: ROUTER_QUEUE_NAME
+        # Model cache configuration (NEW)
+        - name: MODEL_CACHE_DIR
+          value: "/models"
+        # Whisper model configuration (NEW)
+        - name: WHISPER_MODEL_NAME
+          value: "large-v3"
+        - name: WHISPER_DEVICE
+          value: "cuda"
+        - name: WHISPER_COMPUTE_TYPE
+          value: "float16"
+        # Download retry configuration (NEW)
+        - name: MODEL_DOWNLOAD_MAX_RETRIES
+          value: "3"
+        - name: MODEL_DOWNLOAD_RETRY_DELAY
+          value: "5"
+        # Worker identification (for metrics)
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_POOL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pool']
+        volumeMounts:
+        - name: models
+          mountPath: /models
+          readOnly: true  # Workers only need read access
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 4Gi
+            nvidia.com/gpu: 1
+          limits:
+            cpu: 2000m
+            memory: 8Gi
+            nvidia.com/gpu: 1
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: speech-flow-models
+---
+# Example for LID Worker
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speechflow-lid-worker
+  namespace: speech-flow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-flow
+      component: lid-worker
+  template:
+    metadata:
+      labels:
+        app: speech-flow
+        component: lid-worker
+    spec:
+      # Use CPU node pool
+      nodeSelector:
+        pool: cpu
+      containers:
+      - name: lid-worker
+        image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
+        command: ["python", "lid/worker.py"]
+        env:
+        # Service Bus configuration
+        - name: SERVICEBUS_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: speechflow-secrets
+              key: servicebus-connection-string
+        - name: LID_QUEUE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: LID_QUEUE_NAME
+        # Storage configuration
+        - name: AZURE_STORAGE_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: speechflow-secrets
+              key: storage-connection-string
+        - name: BLOB_CONTAINER_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: BLOB_CONTAINER_NAME
+        - name: BLOB_CONTAINER_RESULTS
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: BLOB_CONTAINER_RESULTS
+        # Router queue
+        - name: ROUTER_QUEUE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: speechflow-config
+              key: ROUTER_QUEUE_NAME
+        # Model cache configuration (NEW)
+        - name: MODEL_CACHE_DIR
+          value: "/models"
+        # LID model configuration (NEW)
+        - name: LID_MODEL_ID
+          value: "facebook/mms-lid-126"
+        - name: LID_MODEL_REVISION
+          value: "main"
+        # Download retry configuration (NEW)
+        - name: MODEL_DOWNLOAD_MAX_RETRIES
+          value: "3"
+        - name: MODEL_DOWNLOAD_RETRY_DELAY
+          value: "5"
+        # Worker identification (for metrics)
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_POOL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pool']
+        volumeMounts:
+        - name: models
+          mountPath: /models
+          readOnly: true  # Workers only need read access
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: speech-flow-models
