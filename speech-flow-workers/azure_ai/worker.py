@@ -1,23 +1,20 @@
 import os
 import sys
 import asyncio
-from openai import AzureOpenAI
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.base_worker import BaseWorker, StepMetrics
+from common.ai_adapter import get_ai_adapter
 
-# Azure OpenAI Config
+# Initialize AI adapter (Azure OpenAI or HuggingFace based on ENVIRONMENT)
+ai_adapter = get_ai_adapter()
+
+# Azure OpenAI Config (for compatibility)
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://my-resource.openai.azure.com/")
 AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY", "")
 DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
 API_VERSION = "2024-02-15-preview"
-
-client_ai = AzureOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT, 
-    api_key=AZURE_OPENAI_KEY,  
-    api_version=API_VERSION
-)
 
 
 class AzureAIWorker(BaseWorker):
@@ -28,48 +25,29 @@ class AzureAIWorker(BaseWorker):
         super().__init__(queue_name=queue_name, step_name="AZURE_AI")
     
     def summarize_text(self, text: str, metrics: StepMetrics) -> str:
-        """Summarize text using GPT-4 with token tracking"""
-        response = client_ai.chat.completions.create(
-            model=DEPLOYMENT_NAME,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes text concisely. Include key points as a bulleted list at the end."},
-                {"role": "user", "content": f"Summarize the following text:\n\n{text}"}
-            ]
-        )
+        """Summarize text using AI adapter with token tracking"""
+        result = ai_adapter.summarize_text(text)
         
         # Track token usage
-        if response.usage:
-            metrics.prompt_tokens = response.usage.prompt_tokens
-            metrics.completion_tokens = response.usage.completion_tokens
-            metrics.total_tokens = response.usage.total_tokens
-            metrics.api_cost_usd = self._calculate_api_cost(
-                metrics.prompt_tokens, 
-                metrics.completion_tokens
-            )
+        metrics.prompt_tokens = result['prompt_tokens']
+        metrics.completion_tokens = result['completion_tokens']
+        metrics.total_tokens = result['total_tokens']
+        metrics.api_cost_usd = result['cost_usd']
         
-        return response.choices[0].message.content
+        return result['summary']
     
-    def translate_text(self, text: str, target_lang: str, metrics: StepMetrics) -> str:
-        """Translate text using GPT-4 with token tracking"""
-        response = client_ai.chat.completions.create(
-            model=DEPLOYMENT_NAME,
-            messages=[
-                {"role": "system", "content": f"You are a translator. Translate the following text to {target_lang}. Preserve the original meaning and tone."},
-                {"role": "user", "content": text}
-            ]
-        )
+    def translate_text(self, text: str, target_lang: str, source_lang: str = None, metrics: StepMetrics = None) -> str:
+        """Translate text using AI adapter with token tracking"""
+        result = ai_adapter.translate_text(text, target_lang, source_lang)
         
         # Track token usage
-        if response.usage:
-            metrics.prompt_tokens = response.usage.prompt_tokens
-            metrics.completion_tokens = response.usage.completion_tokens
-            metrics.total_tokens = response.usage.total_tokens
-            metrics.api_cost_usd = self._calculate_api_cost(
-                metrics.prompt_tokens, 
-                metrics.completion_tokens
-            )
+        if metrics:
+            metrics.prompt_tokens = result['prompt_tokens']
+            metrics.completion_tokens = result['completion_tokens']
+            metrics.total_tokens = result['total_tokens']
+            metrics.api_cost_usd = result['cost_usd']
         
-        return response.choices[0].message.content
+        return result['translation']
     
     async def process(self, job_id: str, payload: dict, metrics: StepMetrics, sb_client) -> dict:
         """Process Azure AI task (summarize or translate) with metrics collection"""
@@ -101,10 +79,11 @@ class AzureAIWorker(BaseWorker):
         elif task == "translate":
             self.step_name = "TRANSLATE"
             target_lang = payload.get("target_lang", "en")
-            translation = self.translate_text(input_text, target_lang, metrics)
+            source_lang = payload.get("source_lang", None)
+            translation = self.translate_text(input_text, target_lang, source_lang, metrics)
             result_data = {
                 "translation": translation,
-                "source_language": payload.get("source_lang", "unknown"),
+                "source_language": source_lang or "unknown",
                 "target_language": target_lang,
                 "input_char_count": len(input_text),
                 "output_char_count": len(translation),

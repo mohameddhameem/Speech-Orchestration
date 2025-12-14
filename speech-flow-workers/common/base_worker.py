@@ -4,13 +4,26 @@ import asyncio
 import signal
 import socket
 import time
+import sys
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import Optional
-from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusMessage
-from azure.storage.blob import BlobServiceClient
+
+# Add parent directory to path for backend modules
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'speech-flow-backend'))
+
+# Import adapters
+try:
+    from messaging_adapter import get_message_broker, ServiceBusMessage
+    from storage_adapter import get_storage_adapter
+    USE_ADAPTERS = True
+except ImportError:
+    # Fallback to direct Azure imports if adapters not available
+    from azure.servicebus.aio import ServiceBusClient
+    from azure.servicebus import ServiceBusMessage
+    from azure.storage.blob import BlobServiceClient
+    USE_ADAPTERS = False
 
 
 @dataclass
@@ -124,38 +137,58 @@ class BaseWorker(ABC):
         Download audio file from blob storage.
         Returns: file size in bytes
         """
-        blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
-        blob_client = blob_service_client.get_blob_client(
-            container=self.blob_container_raw, 
-            blob=blob_name
-        )
-        data = blob_client.download_blob().readall()
+        if USE_ADAPTERS:
+            storage = get_storage_adapter(self.storage_conn_str)
+            data = storage.download_blob(self.blob_container_raw, blob_name)
+        else:
+            blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
+            blob_client = blob_service_client.get_blob_client(
+                container=self.blob_container_raw, 
+                blob=blob_name
+            )
+            data = blob_client.download_blob().readall()
+        
         with open(local_path, "wb") as download_file:
             download_file.write(data)
         return len(data)
     
     def upload_result(self, job_id: str, suffix: str, result_data: dict) -> str:
         """Upload result JSON to blob storage"""
-        blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
-        container_client = blob_service_client.get_container_client(self.blob_container_results)
-        if not container_client.exists():
-            container_client.create_container()
-            
         blob_name = f"{job_id}_{suffix}.json"
-        blob_client = container_client.get_blob_client(blob_name)
-        blob_client.upload_blob(json.dumps(result_data), overwrite=True)
+        data = json.dumps(result_data).encode('utf-8')
+        
+        if USE_ADAPTERS:
+            storage = get_storage_adapter(self.storage_conn_str)
+            storage.ensure_container(self.blob_container_results)
+            storage.upload_blob(self.blob_container_results, blob_name, data, overwrite=True)
+        else:
+            blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
+            container_client = blob_service_client.get_container_client(self.blob_container_results)
+            if not container_client.exists():
+                container_client.create_container()
+            
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_client.upload_blob(json.dumps(result_data), overwrite=True)
+        
         return blob_name
     
     def check_step_status(self, job_id: str) -> str:
         """Check if step is already processed (idempotency check)"""
         try:
-            blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
-            blob_client = blob_service_client.get_blob_client(
-                container=self.blob_container_results,
-                blob=f"{job_id}_{self.step_name.lower()}.json"
-            )
-            if blob_client.exists():
-                return "COMPLETED"
+            blob_name = f"{job_id}_{self.step_name.lower()}.json"
+            
+            if USE_ADAPTERS:
+                storage = get_storage_adapter(self.storage_conn_str)
+                if storage.blob_exists(self.blob_container_results, blob_name):
+                    return "COMPLETED"
+            else:
+                blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)
+                blob_client = blob_service_client.get_blob_client(
+                    container=self.blob_container_results,
+                    blob=blob_name
+                )
+                if blob_client.exists():
+                    return "COMPLETED"
         except:
             pass
         return "PENDING"
@@ -264,18 +297,33 @@ class BaseWorker(ABC):
         print(f"[{self.step_name}] Worker starting on queue: {self.queue_name}")
         print(f"[{self.step_name}] Worker ID: {self.worker_id}, Node: {self.worker_node}, Pool: {self.worker_node_pool}")
         
-        async with ServiceBusClient.from_connection_string(self.servicebus_conn_str) as client:
-            receiver = client.get_queue_receiver(queue_name=self.queue_name)
-            async with receiver:
-                while self.running:
-                    try:
-                        # Use receive with timeout to allow checking self.running
-                        messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
-                        for msg in messages:
-                            await self.handle_message(msg, client)
-                            await receiver.complete_message(msg)
-                    except Exception as e:
-                        print(f"[{self.step_name}] Loop error: {e}")
-                        await asyncio.sleep(1)
+        if USE_ADAPTERS:
+            async with get_message_broker(self.servicebus_conn_str) as client:
+                receiver = await client.get_queue_receiver(queue_name=self.queue_name)
+                async with receiver:
+                    while self.running:
+                        try:
+                            # Use receive with timeout to allow checking self.running
+                            messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                            for msg in messages:
+                                await self.handle_message(msg, client)
+                                await receiver.complete_message(msg)
+                        except Exception as e:
+                            print(f"[{self.step_name}] Loop error: {e}")
+                            await asyncio.sleep(1)
+        else:
+            async with ServiceBusClient.from_connection_string(self.servicebus_conn_str) as client:
+                receiver = client.get_queue_receiver(queue_name=self.queue_name)
+                async with receiver:
+                    while self.running:
+                        try:
+                            # Use receive with timeout to allow checking self.running
+                            messages = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
+                            for msg in messages:
+                                await self.handle_message(msg, client)
+                                await receiver.complete_message(msg)
+                        except Exception as e:
+                            print(f"[{self.step_name}] Loop error: {e}")
+                            await asyncio.sleep(1)
         
         print(f"[{self.step_name}] Worker shutdown complete.")
