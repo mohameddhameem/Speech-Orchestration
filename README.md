@@ -12,7 +12,8 @@ docker-compose -f docker-compose.yaml -f docker-compose.local.yml up -d
 
 # Access services
 # API: http://localhost:8000/docs
-# Dashboard: http://localhost:8501
+# Upload UI: http://localhost:8502 (Simple audio upload and results download)
+# Operations Dashboard: http://localhost:8501 (Monitoring and analytics)
 # RabbitMQ: http://localhost:15672 (guest/guest)
 ```
 
@@ -183,7 +184,8 @@ docker-compose up -d
 ## Services
 
 - **API** (port 8000): Job submission and status
-- **Dashboard** (port 8501): Monitoring and metrics
+- **Upload UI** (port 8502): Simple web interface for audio upload and results download
+- **Operations Dashboard** (port 8501): Monitoring and metrics
 - **Router**: Job orchestration and workflow management
 - **Workers**: LID, Whisper transcription, Azure AI translation/summarization
 - **PostgreSQL** (port 5432): Job metadata
