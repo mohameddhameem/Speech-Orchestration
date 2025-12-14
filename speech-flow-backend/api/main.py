@@ -8,8 +8,6 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal, Optional, List
 
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from fastapi import FastAPI, HTTPException, Depends, Query
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
@@ -17,6 +15,17 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import get_db
 from models import Job, JobStep
+
+# Import adapters for multi-environment support
+try:
+    from messaging_adapter import get_message_broker, ServiceBusMessage
+    from storage_adapter import get_storage_adapter
+    USE_ADAPTERS = True
+except ImportError:
+    # Fallback to direct Azure imports
+    from azure.servicebus import ServiceBusClient, ServiceBusMessage
+    from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+    USE_ADAPTERS = False
 
 
 app = FastAPI(
@@ -121,51 +130,63 @@ class JobResultsResponse(BaseModel):
 
 # ============== Blob Storage Helpers ==============
 
-def get_blob_service_client() -> BlobServiceClient:
-    """Get Azure Blob Service client"""
-    return BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+def get_storage_client():
+    """Get storage client (adapter or Azure Blob Service)"""
+    if USE_ADAPTERS:
+        return get_storage_adapter(settings.AZURE_STORAGE_CONNECTION_STRING)
+    else:
+        from azure.storage.blob import BlobServiceClient
+        return BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
 
 
 def generate_upload_sas_url(job_id: str, filename: str) -> str:
     """Generate a SAS URL for uploading audio file"""
-    blob_service_client = get_blob_service_client()
-    container_name = settings.AUDIO_CONTAINER_NAME
+    container_name = settings.BLOB_CONTAINER_NAME
     blob_name = f"{job_id}/{filename}"
     
-    # Generate SAS token valid for 1 hour
-    sas_token = generate_blob_sas(
-        account_name=blob_service_client.account_name,
-        container_name=container_name,
-        blob_name=blob_name,
-        account_key=blob_service_client.credential.account_key,
-        permission=BlobSasPermissions(write=True, create=True),
-        expiry=datetime.utcnow() + timedelta(hours=1)
-    )
-    
-    return f"https://{blob_service_client.account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+    if USE_ADAPTERS:
+        storage = get_storage_adapter(settings.AZURE_STORAGE_CONNECTION_STRING)
+        return storage.generate_upload_url(container_name, blob_name)
+    else:
+        from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+        blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+        
+        # Generate SAS token valid for 1 hour
+        sas_token = generate_blob_sas(
+            account_name=blob_service_client.account_name,
+            container_name=container_name,
+            blob_name=blob_name,
+            account_key=blob_service_client.credential.account_key,
+            permission=BlobSasPermissions(write=True, create=True),
+            expiry=datetime.utcnow() + timedelta(hours=1)
+        )
+        
+        return f"https://{blob_service_client.account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
 
 
 def read_blob_json(container_name: str, blob_name: str) -> Optional[dict]:
     """Read JSON content from a blob"""
     try:
-        blob_service_client = get_blob_service_client()
-        container_client = blob_service_client.get_container_client(container_name)
-        blob_client = container_client.get_blob_client(blob_name)
-        
-        if blob_client.exists():
-            content = blob_client.download_blob().readall()
-            return json.loads(content.decode('utf-8'))
+        if USE_ADAPTERS:
+            storage = get_storage_adapter(settings.AZURE_STORAGE_CONNECTION_STRING)
+            if storage.blob_exists(container_name, blob_name):
+                content = storage.download_blob(container_name, blob_name)
+                return json.loads(content.decode('utf-8'))
+        else:
+            from azure.storage.blob import BlobServiceClient
+            blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+            container_client = blob_service_client.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+            
+            if blob_client.exists():
+                content = blob_client.download_blob().readall()
+                return json.loads(content.decode('utf-8'))
     except Exception:
         pass
     return None
 
 
 # ============== Service Bus Helpers ==============
-
-def get_servicebus_client() -> ServiceBusClient:
-    """Get Azure Service Bus client"""
-    return ServiceBusClient.from_connection_string(settings.SERVICE_BUS_CONNECTION_STRING)
-
 
 def send_job_event(job_id: str, workflow_type: str, audio_path: str, 
                    source_language: Optional[str], target_language: str,
@@ -182,15 +203,37 @@ def send_job_event(job_id: str, workflow_type: str, audio_path: str,
         "timestamp": datetime.utcnow().isoformat()
     }
     
-    with get_servicebus_client() as client:
-        sender = client.get_queue_sender(queue_name=settings.JOB_EVENTS_QUEUE_NAME)
-        with sender:
-            message = ServiceBusMessage(
-                body=json.dumps(message_body),
-                message_id=job_id,
-                subject="JOB_CREATED"
-            )
-            sender.send_messages(message)
+    message = ServiceBusMessage(
+        body=json.dumps(message_body),
+        message_id=job_id,
+        subject="JOB_CREATED"
+    )
+    
+    if USE_ADAPTERS and settings.ENVIRONMENT == "LOCAL":
+        # Use RabbitMQ for local mode (synchronous version)
+        import pika
+        params = pika.URLParameters(settings.RABBITMQ_URL)
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+        
+        queue_name = settings.ROUTER_QUEUE_NAME
+        channel.queue_declare(queue=queue_name, durable=True)
+        channel.basic_publish(
+            exchange='',
+            routing_key=queue_name,
+            body=json.dumps(message_body),
+            properties=pika.BasicProperties(delivery_mode=2)
+        )
+        connection.close()
+    else:
+        # Use Azure Service Bus
+        from azure.servicebus import ServiceBusClient
+        conn_str = settings.SERVICEBUS_CONNECTION_STRING
+        with ServiceBusClient.from_connection_string(conn_str) as client:
+            sender = client.get_queue_sender(queue_name=settings.ROUTER_QUEUE_NAME)
+            with sender:
+                sender.send_messages(message)
+
 
 
 # ============== API Endpoints ==============
@@ -253,12 +296,19 @@ async def start_job(job_id: str, db: Session = Depends(get_db)):
         )
     
     # Verify audio file exists in blob storage
-    blob_service_client = get_blob_service_client()
-    container_client = blob_service_client.get_container_client(settings.AUDIO_CONTAINER_NAME)
     blob_path = f"{job_id}/{job.audio_filename}"
-    blob_client = container_client.get_blob_client(blob_path)
     
-    if not blob_client.exists():
+    if USE_ADAPTERS:
+        storage = get_storage_adapter(settings.AZURE_STORAGE_CONNECTION_STRING)
+        blob_exists = storage.blob_exists(settings.BLOB_CONTAINER_NAME, blob_path)
+    else:
+        from azure.storage.blob import BlobServiceClient
+        blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+        container_client = blob_service_client.get_container_client(settings.BLOB_CONTAINER_NAME)
+        blob_client = container_client.get_blob_client(blob_path)
+        blob_exists = blob_client.exists()
+    
+    if not blob_exists:
         raise HTTPException(
             status_code=400,
             detail="Audio file not found. Please upload the file first."

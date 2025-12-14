@@ -66,6 +66,32 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # RabbitMQ for local development (alternative to Azure Service Bus)
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: speechflow-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
   # Backend Services
   api:
     image: localhost/speechflow-backend:latest
@@ -74,16 +100,22 @@ services:
     ports:
       - "8000:8000"
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-AZURE}
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      LOCAL_STORAGE_PATH: /app/storage
     depends_on:
       postgres:
         condition: service_healthy
       azurite:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./speech-flow-backend:/app
+      - local_storage:/app/storage
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -111,10 +143,14 @@ services:
     container_name: speechflow-router
     command: python router/main.py
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-AZURE}
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -143,8 +179,10 @@ services:
     ports:
       - "8501:8501"
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-AZURE}
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,13 +214,19 @@ services:
     container_name: speechflow-worker-lid
     command: python lid/worker.py
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-AZURE}
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      LOCAL_STORAGE_PATH: /app/storage
       MODEL_CACHE_DIR: /models
     volumes:
       - model_cache:/models
+      - local_storage:/app/storage
     depends_on:
       azurite:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -202,4 +246,6 @@ volumes:
   postgres_data:
     driver: local
   model_cache:
+    driver: local
+  local_storage:
     driver: local

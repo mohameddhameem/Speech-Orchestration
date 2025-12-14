@@ -4,9 +4,6 @@ import os
 import sys
 import httpx
 from datetime import datetime, timezone
-from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusMessage
-from sqlalchemy.orm import Session
 
 # Add parent directory to path to import database/models
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +11,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import SessionLocal
 from models import Job, JobStep
 from config import settings
+
+# Import adapters for multi-environment support
+try:
+    from messaging_adapter import get_message_broker, ServiceBusMessage
+    USE_ADAPTERS = True
+except ImportError:
+    from azure.servicebus.aio import ServiceBusClient
+    from azure.servicebus import ServiceBusMessage
+    USE_ADAPTERS = False
 
 # Queue Names - Centralized from config
 QUEUE_ROUTER = settings.ROUTER_QUEUE_NAME
@@ -333,17 +339,28 @@ async def process_router_message(msg_content, sb_client):
 
 async def main():
     print("Starting Router Service...")
-    conn_str = settings.SERVICEBUS_CONNECTION_STRING
+    conn_str = settings.SERVICEBUS_CONNECTION_STRING if settings.ENVIRONMENT == "AZURE" else settings.RABBITMQ_URL
     queue_name = settings.ROUTER_QUEUE_NAME
 
-    async with ServiceBusClient.from_connection_string(conn_str) as client:
-        receiver = client.get_queue_receiver(queue_name=queue_name)
-        async with receiver:
-            print(f"Listening on {queue_name}...")
-            async for msg in receiver:
-                body = json.loads(str(msg))
-                await process_router_message(body, client)
-                await receiver.complete_message(msg)
+    if USE_ADAPTERS:
+        async with get_message_broker(conn_str) as client:
+            receiver = await client.get_queue_receiver(queue_name=queue_name)
+            async with receiver:
+                print(f"Listening on {queue_name}...")
+                async for msg in receiver:
+                    body = json.loads(str(msg))
+                    await process_router_message(body, client)
+                    await receiver.complete_message(msg)
+    else:
+        from azure.servicebus.aio import ServiceBusClient
+        async with ServiceBusClient.from_connection_string(conn_str) as client:
+            receiver = client.get_queue_receiver(queue_name=queue_name)
+            async with receiver:
+                print(f"Listening on {queue_name}...")
+                async for msg in receiver:
+                    body = json.loads(str(msg))
+                    await process_router_message(body, client)
+                    await receiver.complete_message(msg)
 
 
 if __name__ == "__main__":
