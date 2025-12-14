@@ -1,0 +1,9 @@
+# UI Framework
+streamlit==1.52.1
+
+# Data handling and export
+pandas==2.2.3
+openpyxl==3.1.5
+
+# HTTP client for API calls
+requests==2.32.3

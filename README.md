@@ -12,7 +12,8 @@ docker-compose -f docker-compose.yaml -f docker-compose.local.yml up -d
 
 # Access services
 # API: http://localhost:8000/docs
-# Dashboard: http://localhost:8501
+# Upload UI: http://localhost:8502 (Simple audio upload and results download)
+# Operations Dashboard: http://localhost:8501 (Monitoring and analytics)
 # RabbitMQ: http://localhost:15672 (guest/guest)
 ```
 
@@ -98,11 +99,17 @@ DefaultAzureCredential automatically tries authentication methods in this order:
 speech-flow-backend/
   ├── api/              # REST API endpoints
   ├── router/           # Job orchestration
-  ├── dashboard/        # Streamlit dashboard
+  ├── dashboard/        # Operations monitoring dashboard
   ├── config.py         # Configuration
   ├── messaging_adapter.py   # Message queue abstraction
   ├── storage_adapter.py     # Storage abstraction
   └── requirements.txt
+
+speech-flow-ui/
+  ├── app.py            # Self-service upload UI
+  ├── requirements.txt  # UI dependencies
+  ├── Dockerfile       # Container image
+  └── README.md
 
 speech-flow-workers/
   ├── common/
@@ -183,7 +190,8 @@ docker-compose up -d
 ## Services
 
 - **API** (port 8000): Job submission and status
-- **Dashboard** (port 8501): Monitoring and metrics
+- **Upload UI** (port 8502): Simple web interface for audio upload and results download
+- **Operations Dashboard** (port 8501): Monitoring and metrics
 - **Router**: Job orchestration and workflow management
 - **Workers**: LID, Whisper transcription, Azure AI translation/summarization
 - **PostgreSQL** (port 5432): Job metadata

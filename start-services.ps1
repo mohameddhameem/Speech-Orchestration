@@ -39,7 +39,7 @@ podman run -d `
   -p 10000:10000 -p 10001:10001 -p 10002:10002 `
   --security-opt=no-new-privileges:true `
   mcr.microsoft.com/azure-storage/azurite:3.27.0 `
-  azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --silent
+  azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --silent --skipApiVersionCheck
 
 # Wait for Azurite to be ready
 Write-Host "Waiting for Azurite to be ready..." -ForegroundColor Yellow
@@ -50,6 +50,7 @@ Write-Host "`nStarting API service..." -ForegroundColor Cyan
 podman run -d `
   --name speechflow-api `
   --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
   -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
   -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
   -e SERVICEBUS_CONNECTION_STRING=$env:SERVICEBUS_CONNECTION_STRING `
@@ -65,6 +66,7 @@ Write-Host "`nStarting Router service..." -ForegroundColor Cyan
 podman run -d `
   --name speechflow-router `
   --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
   -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
   -e SERVICEBUS_CONNECTION_STRING=$env:SERVICEBUS_CONNECTION_STRING `
   --cap-drop=ALL `
@@ -77,6 +79,7 @@ Write-Host "`nStarting Dashboard service..." -ForegroundColor Cyan
 podman run -d `
   --name speechflow-dashboard `
   --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
   -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
   -e SERVICEBUS_CONNECTION_STRING=$env:SERVICEBUS_CONNECTION_STRING `
   -p 8501:8501 `
@@ -95,3 +98,32 @@ Write-Host "  Azurite:   localhost:10000" -ForegroundColor White
 Write-Host "`nCheck status with: podman ps" -ForegroundColor Yellow
 Write-Host "View logs with: podman logs <container-name>" -ForegroundColor Yellow
 Write-Host "Stop all with: podman stop speechflow-api speechflow-router speechflow-dashboard speechflow-postgres speechflow-azurite" -ForegroundColor Yellow
+
+# =====================
+# Optional: Start UI
+# =====================
+Write-Host "`nBuilding UI image..." -ForegroundColor Cyan
+podman build -t localhost/speechflow-ui:latest -f ${PWD}/speech-flow-ui/Dockerfile ${PWD} 2>$null
+
+Write-Host "Starting UI service..." -ForegroundColor Cyan
+podman run -d `
+  --name speechflow-ui `
+  --network speech-flow `
+  -e API_BASE_URL="http://speechflow-api:8000" `
+  -p 8502:8502 `
+  --cap-drop=ALL --cap-add=NET_BIND_SERVICE `
+  --security-opt=no-new-privileges:true `
+  localhost/speechflow-ui:latest `
+  streamlit run app.py --server.port=8502 --server.address=0.0.0.0
+
+# Ensure Azurite containers exist (raw-audio, results)
+Write-Host "`nEnsuring Azurite containers exist..." -ForegroundColor Cyan
+podman run --rm `
+  --network speech-flow `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
+  -v ${PWD}/speech-flow-infra/storage:/scripts:ro `
+  localhost/speechflow-backend:latest `
+  python /scripts/init_containers.py
+
+Write-Host "`nService URLs (UI included):" -ForegroundColor Cyan
+Write-Host "  UI:        http://localhost:8502" -ForegroundColor White
