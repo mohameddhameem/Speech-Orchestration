@@ -1,6 +1,10 @@
+"""Messaging adapter to support both Azure Service Bus and RabbitMQ.
+
+This module provides a unified interface for message queue operations that works with:
+- Azure Service Bus (using DefaultAzureCredential)
+- RabbitMQ (for local development)
 """
-Messaging adapter to support both Azure Service Bus and RabbitMQ
-"""
+
 import os
 import json
 from abc import ABC, abstractmethod
@@ -8,64 +12,113 @@ from typing import Optional, Any
 
 
 class MessageBroker(ABC):
-    """Abstract base class for message brokers"""
+    """Abstract base class for message brokers."""
     
     @abstractmethod
     async def get_queue_sender(self, queue_name: str):
-        """Get a sender for a specific queue"""
+        """Get a sender for a specific queue.
+        
+        Args:
+            queue_name: Name of the queue
+            
+        Returns:
+            Queue sender instance
+        """
         pass
     
     @abstractmethod
     async def get_queue_receiver(self, queue_name: str):
-        """Get a receiver for a specific queue"""
+        """Get a receiver for a specific queue.
+        
+        Args:
+            queue_name: Name of the queue
+            
+        Returns:
+            Queue receiver instance
+        """
         pass
     
     @abstractmethod
     async def close(self):
-        """Close the connection"""
+        """Close the connection."""
         pass
 
 
 class AzureServiceBusAdapter(MessageBroker):
-    """Azure Service Bus implementation"""
+    """Azure Service Bus implementation using DefaultAzureCredential."""
     
-    def __init__(self, connection_string: str):
+    def __init__(
+        self,
+        fully_qualified_namespace: Optional[str] = None,
+        use_connection_string: bool = False,
+        connection_string: Optional[str] = None
+    ):
+        """Initialize Azure Service Bus adapter.
+        
+        Args:
+            fully_qualified_namespace: Service Bus namespace FQDN
+            use_connection_string: Whether to use connection string (for local testing)
+            connection_string: Connection string (only for backward compatibility)
+        """
         from azure.servicebus.aio import ServiceBusClient
-        self.connection_string = connection_string
-        self._client = ServiceBusClient.from_connection_string(connection_string)
+        
+        self.fully_qualified_namespace = fully_qualified_namespace
+        self.use_connection_string = use_connection_string
+        
+        if use_connection_string and connection_string:
+            # Use connection string (for backward compatibility/local testing)
+            self._client = ServiceBusClient.from_connection_string(connection_string)
+        else:
+            # Use DefaultAzureCredential (production)
+            from azure.identity.aio import DefaultAzureCredential
+            credential = DefaultAzureCredential()
+            self._client = ServiceBusClient(
+                fully_qualified_namespace=fully_qualified_namespace,
+                credential=credential
+            )
     
     async def get_queue_sender(self, queue_name: str):
+        """Get a sender for a specific queue."""
         return self._client.get_queue_sender(queue_name=queue_name)
     
     async def get_queue_receiver(self, queue_name: str):
+        """Get a receiver for a specific queue."""
         return self._client.get_queue_receiver(queue_name=queue_name)
     
     async def close(self):
+        """Close the connection."""
         await self._client.close()
     
     async def __aenter__(self):
+        """Async context manager entry."""
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
         await self.close()
 
 
 class RabbitMQAdapter(MessageBroker):
-    """RabbitMQ implementation for local development"""
+    """RabbitMQ implementation for local development.
+    
+    Note: This implementation uses blocking pika for simplicity in local development.
+    For production async use, consider using aio_pika instead.
+    """
     
     def __init__(self, connection_string: str):
-        # Parse connection string (format: amqp://user:pass@host:port/vhost)
+        """Initialize RabbitMQ adapter.
+        
+        Args:
+            connection_string: AMQP connection string (e.g., amqp://user:pass@host:port/)
+        """
         self.connection_string = connection_string
         self.connection = None
         self.channel = None
         self._receivers = {}
         self._senders = {}
-        
-        # Note: This implementation uses blocking pika for simplicity in local development
-        # For production use with async code, consider using aio_pika instead
     
-    async def _ensure_connection(self):
-        """Ensure connection is established"""
+    async def _ensure_connection(self) -> None:
+        """Ensure connection is established."""
         if self.connection is None or self.connection.is_closed:
             import pika
             # Parse RabbitMQ connection string
@@ -74,29 +127,31 @@ class RabbitMQAdapter(MessageBroker):
             self.channel = self.connection.channel()
     
     async def get_queue_sender(self, queue_name: str):
-        """Get a sender for a specific queue"""
+        """Get a sender for a specific queue."""
         await self._ensure_connection()
         # Declare queue
         self.channel.queue_declare(queue=queue_name, durable=True)
         return RabbitMQSender(self.channel, queue_name)
     
     async def get_queue_receiver(self, queue_name: str):
-        """Get a receiver for a specific queue"""
+        """Get a receiver for a specific queue."""
         await self._ensure_connection()
         # Declare queue
         self.channel.queue_declare(queue=queue_name, durable=True)
         return RabbitMQReceiver(self.channel, queue_name)
     
     async def close(self):
-        """Close the connection"""
+        """Close the connection."""
         if self.connection and not self.connection.is_closed:
             self.connection.close()
     
     async def __aenter__(self):
+        """Async context manager entry."""
         await self._ensure_connection()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
         await self.close()
 
 
@@ -210,13 +265,15 @@ class ServiceBusMessage:
         self.subject = subject
 
 
-def get_message_broker(connection_string: Optional[str] = None) -> MessageBroker:
-    """
-    Factory function to get the appropriate message broker based on environment.
+def get_message_broker(
+    fully_qualified_namespace: Optional[str] = None,
+    connection_string: Optional[str] = None
+) -> MessageBroker:
+    """Factory function to get the appropriate message broker.
     
     Args:
-        connection_string: Connection string for the message broker.
-                          If None, uses SERVICEBUS_CONNECTION_STRING or RABBITMQ_URL env var.
+        fully_qualified_namespace: Service Bus namespace FQDN (for AZURE mode)
+        connection_string: Connection string (for RabbitMQ or legacy Service Bus)
     
     Returns:
         MessageBroker instance (either Azure Service Bus or RabbitMQ)
@@ -227,12 +284,33 @@ def get_message_broker(connection_string: Optional[str] = None) -> MessageBroker
         # Use RabbitMQ for local development
         if connection_string is None:
             connection_string = os.getenv(
-                "RABBITMQ_URL", 
+                "RABBITMQ_URL",
                 "amqp://guest:guest@localhost:5672/"
             )
         return RabbitMQAdapter(connection_string)
     else:
         # Use Azure Service Bus
+        # Check if connection string provided (for backward compatibility)
         if connection_string is None:
             connection_string = os.getenv("SERVICEBUS_CONNECTION_STRING", "")
-        return AzureServiceBusAdapter(connection_string)
+        
+        # Check if this is a legacy connection string or local testing
+        use_connection_string = (
+            "SharedAccessKey" in connection_string or
+            "localhost" in connection_string
+        )
+        
+        if not use_connection_string:
+            # Production: Use DefaultAzureCredential
+            if fully_qualified_namespace is None:
+                fully_qualified_namespace = os.getenv("SERVICEBUS_FQDN", "")
+            return AzureServiceBusAdapter(
+                fully_qualified_namespace=fully_qualified_namespace,
+                use_connection_string=False
+            )
+        else:
+            # Legacy/Testing: Use connection string
+            return AzureServiceBusAdapter(
+                use_connection_string=True,
+                connection_string=connection_string
+            )

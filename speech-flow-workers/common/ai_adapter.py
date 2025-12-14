@@ -1,68 +1,142 @@
+"""Translation/AI adapter to support both Azure OpenAI and local HuggingFace models.
+
+This module provides a unified interface for AI operations that works with:
+- Azure OpenAI (using DefaultAzureCredential or API key)
+- HuggingFace Transformers (for local development)
 """
-Translation/AI adapter to support both Azure OpenAI and local HuggingFace models
-"""
+
 import os
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 
 
 class AIModelAdapter(ABC):
-    """Abstract base class for AI model adapters"""
+    """Abstract base class for AI model adapters."""
     
     @abstractmethod
     def summarize_text(self, text: str) -> Dict[str, Any]:
-        """
-        Summarize text.
+        """Summarize text.
+        
+        Args:
+            text: Text to summarize
         
         Returns:
-            Dict with keys: 'summary', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd'
+            Dict with keys: 'summary', 'prompt_tokens', 'completion_tokens', 
+            'total_tokens', 'cost_usd'
         """
         pass
     
     @abstractmethod
-    def translate_text(self, text: str, target_language: str, source_language: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Translate text to target language.
+    def translate_text(
+        self,
+        text: str,
+        target_language: str,
+        source_language: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Translate text to target language.
+        
+        Args:
+            text: Text to translate
+            target_language: Target language code
+            source_language: Source language code (optional)
         
         Returns:
-            Dict with keys: 'translation', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd'
+            Dict with keys: 'translation', 'prompt_tokens', 'completion_tokens',
+            'total_tokens', 'cost_usd'
         """
         pass
 
 
 class AzureOpenAIAdapter(AIModelAdapter):
-    """Azure OpenAI implementation"""
+    """Azure OpenAI implementation using DefaultAzureCredential or API key."""
     
-    def __init__(self, endpoint: str, api_key: str, deployment: str, api_version: str = "2024-02-15-preview"):
+    def __init__(
+        self,
+        endpoint: str,
+        deployment: str,
+        api_key: Optional[str] = None,
+        use_azure_ad: bool = True,
+        api_version: str = "2024-02-15-preview"
+    ):
+        """Initialize Azure OpenAI adapter.
+        
+        Args:
+            endpoint: Azure OpenAI endpoint URL
+            deployment: Deployment/model name
+            api_key: API key (optional, for backward compatibility)
+            use_azure_ad: Whether to use DefaultAzureCredential (True) or API key (False)
+            api_version: API version
+        """
         from openai import AzureOpenAI
         
         self.endpoint = endpoint
-        self.api_key = api_key
         self.deployment = deployment
         self.api_version = api_version
+        self.use_azure_ad = use_azure_ad
         
-        self.client = AzureOpenAI(
-            azure_endpoint=endpoint,
-            api_key=api_key,
-            api_version=api_version
-        )
+        if use_azure_ad and not api_key:
+            # Use DefaultAzureCredential (production)
+            from azure.identity import DefaultAzureCredential
+            from azure.core.credentials import AccessToken
+            
+            # Create token provider for OpenAI SDK
+            credential = DefaultAzureCredential()
+            
+            # Get token for Azure Cognitive Services
+            token = credential.get_token("https://cognitiveservices.azure.com/.default")
+            
+            self.client = AzureOpenAI(
+                azure_endpoint=endpoint,
+                azure_ad_token=token.token,
+                api_version=api_version
+            )
+            self.credential = credential
+        else:
+            # Use API key (legacy or local testing)
+            self.client = AzureOpenAI(
+                azure_endpoint=endpoint,
+                api_key=api_key,
+                api_version=api_version
+            )
+            self.credential = None
         
         # Cost per 1000 tokens
         self.cost_per_1k_input = float(os.getenv("AZURE_OPENAI_INPUT_COST", "0.01"))
         self.cost_per_1k_output = float(os.getenv("AZURE_OPENAI_OUTPUT_COST", "0.03"))
     
     def _calculate_cost(self, prompt_tokens: int, completion_tokens: int) -> float:
-        """Calculate API cost"""
+        """Calculate API cost.
+        
+        Args:
+            prompt_tokens: Number of prompt tokens
+            completion_tokens: Number of completion tokens
+            
+        Returns:
+            Cost in USD
+        """
         input_cost = (prompt_tokens / 1000) * self.cost_per_1k_input
         output_cost = (completion_tokens / 1000) * self.cost_per_1k_output
         return round(input_cost + output_cost, 6)
     
+    def _refresh_token_if_needed(self) -> None:
+        """Refresh Azure AD token if using DefaultAzureCredential."""
+        if self.use_azure_ad and self.credential:
+            token = self.credential.get_token("https://cognitiveservices.azure.com/.default")
+            # Update client with new token
+            self.client._azure_ad_token = token.token
+    
     def summarize_text(self, text: str) -> Dict[str, Any]:
-        """Summarize text using Azure OpenAI"""
+        """Summarize text using Azure OpenAI."""
+        self._refresh_token_if_needed()
+        
         response = self.client.chat.completions.create(
             model=self.deployment,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes text concisely. Include key points as a bulleted list at the end."},
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that summarizes text concisely. "
+                              "Include key points as a bulleted list at the end."
+                },
                 {"role": "user", "content": f"Summarize the following text:\n\n{text}"}
             ]
         )
@@ -79,12 +153,23 @@ class AzureOpenAIAdapter(AIModelAdapter):
             "cost_usd": self._calculate_cost(prompt_tokens, completion_tokens)
         }
     
-    def translate_text(self, text: str, target_language: str, source_language: Optional[str] = None) -> Dict[str, Any]:
-        """Translate text using Azure OpenAI"""
+    def translate_text(
+        self,
+        text: str,
+        target_language: str,
+        source_language: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Translate text using Azure OpenAI."""
+        self._refresh_token_if_needed()
+        
         response = self.client.chat.completions.create(
             model=self.deployment,
             messages=[
-                {"role": "system", "content": f"You are a translator. Translate the following text to {target_language}. Preserve the original meaning and tone."},
+                {
+                    "role": "system",
+                    "content": f"You are a translator. Translate the following text to "
+                              f"{target_language}. Preserve the original meaning and tone."
+                },
                 {"role": "user", "content": text}
             ]
         )
@@ -103,12 +188,13 @@ class AzureOpenAIAdapter(AIModelAdapter):
 
 
 class HuggingFaceAdapter(AIModelAdapter):
-    """HuggingFace local models implementation for development"""
+    """HuggingFace local models implementation for development."""
     
     def __init__(self):
+        """Initialize HuggingFace adapter with local models."""
         # Use lightweight models suitable for local development
         self.summarization_model_name = os.getenv(
-            "HF_SUMMARIZATION_MODEL", 
+            "HF_SUMMARIZATION_MODEL",
             "facebook/bart-large-cnn"  # Good quality summarization model
         )
         self.translation_model_name = os.getenv(
@@ -120,7 +206,7 @@ class HuggingFaceAdapter(AIModelAdapter):
         self._translation_pipelines = {}  # Cache translation models
     
     def _get_summarization_pipeline(self):
-        """Lazy load summarization pipeline"""
+        """Lazy load summarization pipeline."""
         if self._summarization_pipeline is None:
             from transformers import pipeline
             print(f"Loading summarization model: {self.summarization_model_name}")
@@ -238,15 +324,16 @@ class HuggingFaceAdapter(AIModelAdapter):
 def get_ai_adapter(
     endpoint: Optional[str] = None,
     api_key: Optional[str] = None,
-    deployment: Optional[str] = None
+    deployment: Optional[str] = None,
+    use_azure_ad: Optional[bool] = None
 ) -> AIModelAdapter:
-    """
-    Factory function to get the appropriate AI adapter based on environment.
+    """Factory function to get the appropriate AI adapter.
     
     Args:
         endpoint: Azure OpenAI endpoint (optional, read from env if None)
-        api_key: Azure OpenAI API key (optional, read from env if None)
+        api_key: Azure OpenAI API key (optional, for legacy support)
         deployment: Azure OpenAI deployment name (optional, read from env if None)
+        use_azure_ad: Whether to use DefaultAzureCredential (None = auto-detect)
     
     Returns:
         AIModelAdapter instance (either Azure OpenAI or HuggingFace)
@@ -260,9 +347,20 @@ def get_ai_adapter(
         # Use Azure OpenAI
         if endpoint is None:
             endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "https://my-resource.openai.azure.com/")
-        if api_key is None:
-            api_key = os.getenv("AZURE_OPENAI_KEY", "")
         if deployment is None:
             deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
         
-        return AzureOpenAIAdapter(endpoint, api_key, deployment)
+        # Auto-detect whether to use Azure AD or API key
+        if use_azure_ad is None:
+            if api_key is None:
+                api_key = os.getenv("AZURE_OPENAI_KEY", "")
+            # Use Azure AD if no API key is provided
+            use_azure_ad = not bool(api_key)
+        
+        return AzureOpenAIAdapter(
+            endpoint=endpoint,
+            deployment=deployment,
+            api_key=api_key if not use_azure_ad else None,
+            use_azure_ad=use_azure_ad
+        )
+
