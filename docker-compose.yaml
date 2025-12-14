@@ -1,9 +1,17 @@
 version: '3.8'
 
+# Best practices:
+# - Use specific image versions (not latest)
+# - Non-root users for containers
+# - Resource limits
+# - Health checks
+# - Read-only filesystem where possible
+
 services:
   # Infrastructure
   postgres:
-    image: postgres:14
+    image: postgres:14-alpine
+    container_name: speechflow-postgres
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -13,74 +21,195 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./speech-flow-infra/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only_root_filesystem: false
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 256M
 
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
+    image: mcr.microsoft.com/azure-storage/azurite:3.27.0
+    container_name: speechflow-azurite
     ports:
       - "10000:10000"
       - "10001:10001"
       - "10002:10002"
-    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000"
-
-  # We use RabbitMQ to simulate Service Bus locally if we abstract the transport, 
-  # but since our code uses `azure-servicebus` SDK directly, we can't easily mock it 
-  # without a complex mock server. 
-  # For local dev, it's often easier to connect to a REAL Azure Service Bus Dev Namespace.
-  # However, for the sake of this example, I'll leave a placeholder comment.
-  # To run fully offline, we'd need to wrap the messaging logic in an interface 
-  # and have a RabbitMQ implementation.
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --silent"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:10000/devstoreaccount1?comp=list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only_root_filesystem: false
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
   # Backend Services
   api:
     build:
       context: .
       dockerfile: speech-flow-backend/Dockerfile
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
+      cache_to:
+        - type=local,dest=/tmp/.buildx-cache-new
+    container_name: speechflow-api
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
-      # Point to local Azurite
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
-      # REAL Service Bus Connection String needed here for now
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
     depends_on:
-      - postgres
-      - azurite
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
     volumes:
       - ./speech-flow-backend:/app
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   router:
     build:
       context: .
       dockerfile: speech-flow-backend/Dockerfile
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
+    container_name: speechflow-router
     command: python router/main.py
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.socket().connect(('localhost', 8000))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   dashboard:
     build:
       context: .
       dockerfile: speech-flow-backend/Dockerfile
-    command: streamlit run dashboard/app.py
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
+    container_name: speechflow-dashboard
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
     ports:
       - "8501:8501"
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
 
   # Workers (Scaled to 0 by default in compose, bring up manually if needed)
   worker-lid:
     build:
       context: .
       dockerfile: speech-flow-workers/Dockerfile
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
+    container_name: speechflow-worker-lid
     command: python lid/worker.py
     environment:
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+    depends_on:
+      azurite:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only_root_filesystem: false
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+    restart_policy:
+      condition: on-failure
+      delay: 5s
+      max_attempts: 3
 
 volumes:
   postgres_data:
+    driver: local

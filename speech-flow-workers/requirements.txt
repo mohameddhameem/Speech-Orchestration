@@ -1,8 +1,22 @@
-torch
-torchaudio
-faster-whisper
-azure-ai-textanalytics
-azure-cognitiveservices-speech
-azure-servicebus
-azure-storage-blob
-psycopg2-binary
+# Core dependencies
+torch==2.9.1
+torchaudio==2.9.1
+faster-whisper==1.2.1
+transformers==4.48.1
+
+# Azure services
+azure-ai-textanalytics==5.3.0
+azure-cognitiveservices-speech==1.47.0
+azure-servicebus==7.14.3
+azure-storage-blob==12.27.1
+openai==1.59.5
+
+# Database
+psycopg2-binary==2.9.11
+
+# Process management for health checks
+psutil==6.1.0
+
+# Security: Pin transitive dependencies
+cryptography==46.0.3
+certifi==2025.11.12
