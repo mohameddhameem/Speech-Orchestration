@@ -54,16 +54,15 @@ class RabbitMQAdapter(MessageBroker):
     """RabbitMQ implementation for local development"""
     
     def __init__(self, connection_string: str):
-        import pika
-        from pika.adapters.asyncio_connection import AsyncioConnection
-        
         # Parse connection string (format: amqp://user:pass@host:port/vhost)
         self.connection_string = connection_string
         self.connection = None
         self.channel = None
-        self._pika = pika
         self._receivers = {}
         self._senders = {}
+        
+        # Note: This implementation uses blocking pika for simplicity in local development
+        # For production use with async code, consider using aio_pika instead
     
     async def _ensure_connection(self):
         """Ensure connection is established"""

@@ -40,7 +40,7 @@ class AzureAIWorker(BaseWorker):
         """Translate text using AI adapter with token tracking"""
         result = ai_adapter.translate_text(text, target_lang, source_lang)
         
-        # Track token usage
+        # Track token usage if metrics provided
         if metrics:
             metrics.prompt_tokens = result['prompt_tokens']
             metrics.completion_tokens = result['completion_tokens']

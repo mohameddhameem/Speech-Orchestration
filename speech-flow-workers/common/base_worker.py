@@ -155,11 +155,11 @@ class BaseWorker(ABC):
     def upload_result(self, job_id: str, suffix: str, result_data: dict) -> str:
         """Upload result JSON to blob storage"""
         blob_name = f"{job_id}_{suffix}.json"
-        data = json.dumps(result_data).encode('utf-8')
         
         if USE_ADAPTERS:
             storage = get_storage_adapter(self.storage_conn_str)
             storage.ensure_container(self.blob_container_results)
+            data = json.dumps(result_data).encode('utf-8')
             storage.upload_blob(self.blob_container_results, blob_name, data, overwrite=True)
         else:
             blob_service_client = BlobServiceClient.from_connection_string(self.storage_conn_str)

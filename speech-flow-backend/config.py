@@ -8,6 +8,8 @@ class Settings:
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/speechflow")
     
     # Storage Configuration
+    # WARNING: Default connection string contains Azurite development key - DO NOT use in production!
+    # For production Azure Blob Storage, set AZURE_STORAGE_CONNECTION_STRING environment variable
     AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;")
     LOCAL_STORAGE_PATH = os.getenv("LOCAL_STORAGE_PATH", "/tmp/speech-flow-storage")
     BLOB_CONTAINER_NAME = os.getenv("BLOB_CONTAINER_NAME", "raw-audio")
