@@ -1,11 +1,25 @@
-fastapi
-uvicorn
-pydantic
-azure-servicebus
-azure-storage-blob
-sqlalchemy
-psycopg2-binary
-python-multipart
-streamlit
-plotly
-httpx
+# Core web framework
+fastapi==0.124.4
+uvicorn[standard]==0.38.0
+pydantic==2.12.5
+python-multipart==0.0.20
+
+# Azure integration
+azure-servicebus==7.14.3
+azure-storage-blob==12.27.1
+
+# Database
+sqlalchemy==2.0.45
+psycopg2-binary==2.9.11
+
+# Dashboard
+streamlit==1.52.1
+plotly==6.5.0
+
+# HTTP client
+httpx==0.28.1
+
+# Security: Pin transitive dependencies for reproducibility
+# (These are automatically pulled but pinned for security scanning)
+cryptography==46.0.3
+certifi==2025.11.12
