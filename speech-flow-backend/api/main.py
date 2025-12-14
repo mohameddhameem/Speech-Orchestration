@@ -256,7 +256,8 @@ async def submit_job(request: JobSubmitRequest, db: Session = Depends(get_db)):
     
     # Create job record
     job = Job(
-        id=job_id,
+        job_id=job_id,
+        customer_id="default",  # Default customer ID for simple UI
         audio_filename=request.audio_filename,
         workflow_type=request.workflow_type,
         source_language=request.source_language,
@@ -284,7 +285,7 @@ async def start_job(job_id: str, db: Session = Depends(get_db)):
     """
     Start processing a job after audio file has been uploaded.
     """
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.job_id == job_id).first()
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -341,7 +342,7 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
     """
     Get detailed status of a job including all processing steps.
     """
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.job_id == job_id).first()
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -362,7 +363,7 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
     ]
     
     return JobStatusResponse(
-        job_id=job.id,
+        job_id=str(job.job_id),
         status=job.status,
         workflow_type=job.workflow_type,
         audio_filename=job.audio_filename,
@@ -381,7 +382,7 @@ async def get_job_results(job_id: str, db: Session = Depends(get_db)):
     
     Returns transcription, translation, and summary results from blob storage.
     """
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.job_id == job_id).first()
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -398,7 +399,7 @@ async def get_job_results(job_id: str, db: Session = Depends(get_db)):
     
     # Build results response
     results = JobResultsResponse(
-        job_id=job.id,
+        job_id=str(job.job_id),
         status=job.status,
         workflow_type=job.workflow_type,
         audio_filename=job.audio_filename
@@ -494,7 +495,7 @@ async def list_jobs(
         "offset": offset,
         "jobs": [
             {
-                "job_id": job.id,
+                "job_id": str(job.job_id),
                 "status": job.status,
                 "workflow_type": job.workflow_type,
                 "audio_filename": job.audio_filename,
@@ -511,7 +512,7 @@ async def cancel_job(job_id: str, db: Session = Depends(get_db)):
     """
     Cancel a pending or queued job.
     """
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.job_id == job_id).first()
     
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

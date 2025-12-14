@@ -42,6 +42,7 @@ class Settings:
     # Blob Container Names
     BLOB_CONTAINER_NAME: Final[str] = os.getenv("BLOB_CONTAINER_NAME", "raw-audio")
     BLOB_CONTAINER_RESULTS: Final[str] = os.getenv("BLOB_CONTAINER_RESULTS", "results")
+    RESULTS_CONTAINER_NAME: Final[str] = os.getenv("RESULTS_CONTAINER_NAME", "results")  # Alias for backward compatibility
     
     # Azure Service Bus Configuration (for AZURE mode with DefaultAzureCredential)
     SERVICEBUS_NAMESPACE: Final[str] = os.getenv("SERVICEBUS_NAMESPACE", "")
