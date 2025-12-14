@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,7 +16,9 @@ spec:
       containers:
       - name: worker
         image: speech-flow-workers:latest
-        command: ["python", "azure_ai/worker.py"]
+        command:
+        - python
+        - azure_ai/worker.py
         envFrom:
         - secretRef:
             name: speech-flow-secrets
@@ -35,4 +38,4 @@ spec:
     metadata:
       queueName: azure-ai-jobs
       connectionFromEnv: SERVICEBUS_CONNECTION_STRING
-      messageCount: "10"
+      messageCount: '10'

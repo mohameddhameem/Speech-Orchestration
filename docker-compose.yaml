@@ -1,3 +1,4 @@
+---
 version: '3.8'
 
 # Best practices:
@@ -102,7 +103,10 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-AZURE}
       DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
-      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      AZURE_STORAGE_CONNECTION_STRING: >-
+        DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;
+        AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;
+        BlobEndpoint=http://azurite:10000/devstoreaccount1;
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       LOCAL_STORAGE_PATH: /app/storage
@@ -250,7 +254,10 @@ services:
     command: python lid/worker.py
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-AZURE}
-      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      AZURE_STORAGE_CONNECTION_STRING: >-
+        DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;
+        AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;
+        BlobEndpoint=http://azurite:10000/devstoreaccount1;
       SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       LOCAL_STORAGE_PATH: /app/storage

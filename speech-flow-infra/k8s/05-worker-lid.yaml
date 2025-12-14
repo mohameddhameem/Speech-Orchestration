@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,14 +16,16 @@ spec:
       containers:
       - name: worker
         image: speech-flow-workers:latest
-        command: ["python", "lid/worker.py"]
+        command:
+        - python
+        - lid/worker.py
         envFrom:
         - secretRef:
             name: speech-flow-secrets
         resources:
           requests:
-            cpu: "500m"
-            memory: "1Gi"
+            cpu: 500m
+            memory: 1Gi
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -39,4 +42,4 @@ spec:
     metadata:
       queueName: lid-jobs
       connectionFromEnv: SERVICEBUS_CONNECTION_STRING
-      messageCount: "5"
+      messageCount: '5'

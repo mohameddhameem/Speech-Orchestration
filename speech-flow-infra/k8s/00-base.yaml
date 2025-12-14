@@ -1,28 +1,20 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: speech-flow
   labels:
     name: speech-flow
-
 ---
-# =============================================================================
-# SERVICE ACCOUNTS WITH WORKLOAD IDENTITY
-# =============================================================================
-# These service accounts are linked to Azure User-Assigned Managed Identities
-# via Federated Credentials for secure, passwordless authentication.
-
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: sa-speechflow-api
   namespace: speech-flow
   annotations:
-    # Replace with your actual Client ID from Terraform output
-    azure.workload.identity/client-id: "${UAMI_API_CLIENT_ID}"
+    azure.workload.identity/client-id: ${UAMI_API_CLIENT_ID}
   labels:
-    azure.workload.identity/use: "true"
-
+    azure.workload.identity/use: 'true'
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -30,10 +22,9 @@ metadata:
   name: sa-speechflow-router
   namespace: speech-flow
   annotations:
-    azure.workload.identity/client-id: "${UAMI_ROUTER_CLIENT_ID}"
+    azure.workload.identity/client-id: ${UAMI_ROUTER_CLIENT_ID}
   labels:
-    azure.workload.identity/use: "true"
-
+    azure.workload.identity/use: 'true'
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -41,10 +32,9 @@ metadata:
   name: sa-speechflow-worker
   namespace: speech-flow
   annotations:
-    azure.workload.identity/client-id: "${UAMI_WORKER_CLIENT_ID}"
+    azure.workload.identity/client-id: ${UAMI_WORKER_CLIENT_ID}
   labels:
-    azure.workload.identity/use: "true"
-
+    azure.workload.identity/use: 'true'
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -52,70 +42,32 @@ metadata:
   name: sa-speechflow-dashboard
   namespace: speech-flow
   annotations:
-    azure.workload.identity/client-id: "${UAMI_DASHBOARD_CLIENT_ID}"
+    azure.workload.identity/client-id: ${UAMI_DASHBOARD_CLIENT_ID}
   labels:
-    azure.workload.identity/use: "true"
-
+    azure.workload.identity/use: 'true'
 ---
-# =============================================================================
-# CONFIGMAP FOR SHARED CONFIGURATION
-# =============================================================================
-# Non-sensitive configuration values shared across components
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: speech-flow-config
   namespace: speech-flow
 data:
-  # Azure Service Bus
-  SERVICEBUS_NAMESPACE: "${SERVICEBUS_NAMESPACE}.servicebus.windows.net"
-  QUEUE_JOB_EVENTS: "job-events"
-  QUEUE_LID_JOBS: "lid-jobs"
-  QUEUE_WHISPER_JOBS: "whisper-jobs"
-  QUEUE_AZURE_AI_JOBS: "azure-ai-jobs"
-  
-  # Azure Storage
-  STORAGE_ACCOUNT_NAME: "${STORAGE_ACCOUNT_NAME}"
-  STORAGE_CONTAINER_AUDIO: "audio-files"
-  STORAGE_CONTAINER_RESULTS: "results"
-  
-  # Azure OpenAI
-  AZURE_OPENAI_ENDPOINT: "https://${AZURE_OPENAI_NAME}.openai.azure.com/"
-  AZURE_OPENAI_DEPLOYMENT: "gpt-4"
-  AZURE_OPENAI_API_VERSION: "2024-02-01"
-  
-  # PostgreSQL
-  POSTGRES_HOST: "${POSTGRES_FQDN}"
-  POSTGRES_PORT: "5432"
-  POSTGRES_DATABASE: "speechflow"
-  POSTGRES_SSLMODE: "require"
-
+  SERVICEBUS_NAMESPACE: ${SERVICEBUS_NAMESPACE}.servicebus.windows.net
+  QUEUE_JOB_EVENTS: job-events
+  QUEUE_LID_JOBS: lid-jobs
+  QUEUE_WHISPER_JOBS: whisper-jobs
+  QUEUE_AZURE_AI_JOBS: azure-ai-jobs
+  STORAGE_ACCOUNT_NAME: ${STORAGE_ACCOUNT_NAME}
+  STORAGE_CONTAINER_AUDIO: audio-files
+  STORAGE_CONTAINER_RESULTS: results
+  AZURE_OPENAI_ENDPOINT: https://${AZURE_OPENAI_NAME}.openai.azure.com/
+  AZURE_OPENAI_DEPLOYMENT: gpt-4
+  AZURE_OPENAI_API_VERSION: '2024-02-01'
+  POSTGRES_HOST: ${POSTGRES_FQDN}
+  POSTGRES_PORT: '5432'
+  POSTGRES_DATABASE: speechflow
+  POSTGRES_SSLMODE: require
 ---
-# =============================================================================
-# EXTERNAL SECRET (Optional - for Key Vault integration)
-# =============================================================================
-# Uncomment if using External Secrets Operator with Azure Key Vault
-
-# apiVersion: external-secrets.io/v1beta1
-# kind: SecretStore
-# metadata:
-#   name: azure-key-vault
-#   namespace: speech-flow
-# spec:
-#   provider:
-#     azurekv:
-#       authType: WorkloadIdentity
-#       vaultUrl: "https://${KEY_VAULT_NAME}.vault.azure.net"
-#       serviceAccountRef:
-#         name: sa-speechflow-api
-
----
-# =============================================================================
-# SECRETS (for non-Workload Identity scenarios)
-# =============================================================================
-# Use this for local development or when not using Workload Identity
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -123,13 +75,9 @@ metadata:
   namespace: speech-flow
 type: Opaque
 stringData:
-  # PostgreSQL credentials (use Key Vault in production)
-  POSTGRES_USER: "speechflowadmin"
-  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-  DATABASE_URL: "postgresql://speechflowadmin:${POSTGRES_PASSWORD}@${POSTGRES_FQDN}:5432/speechflow?sslmode=require"
-  
-  # Legacy connection strings (for backwards compatibility)
-  # Prefer Workload Identity + DefaultAzureCredential in code
-  AZURE_STORAGE_CONNECTION_STRING: "${STORAGE_CONNECTION_STRING}"
-  SERVICEBUS_CONNECTION_STRING: "${SERVICEBUS_CONNECTION_STRING}"
-  AZURE_OPENAI_KEY: "${AZURE_OPENAI_KEY}"
+  POSTGRES_USER: speechflowadmin
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  DATABASE_URL: postgresql://speechflowadmin:${POSTGRES_PASSWORD}@${POSTGRES_FQDN}:5432/speechflow?sslmode=require
+  AZURE_STORAGE_CONNECTION_STRING: ${STORAGE_CONNECTION_STRING}
+  SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+  AZURE_OPENAI_KEY: ${AZURE_OPENAI_KEY}

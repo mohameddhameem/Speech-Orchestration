@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,14 +14,16 @@ spec:
         app: worker-whisper
     spec:
       tolerations:
-      - key: "sku"
-        operator: "Equal"
-        value: "gpu"
-        effect: "NoSchedule"
+      - key: sku
+        operator: Equal
+        value: gpu
+        effect: NoSchedule
       containers:
       - name: worker
         image: speech-flow-workers:latest
-        command: ["python", "whisper/worker.py"]
+        command:
+        - python
+        - whisper/worker.py
         envFrom:
         - secretRef:
             name: speech-flow-secrets
@@ -43,4 +46,4 @@ spec:
     metadata:
       queueName: whisper-jobs
       connectionFromEnv: SERVICEBUS_CONNECTION_STRING
-      messageCount: "1"
+      messageCount: '1'

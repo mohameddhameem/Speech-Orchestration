@@ -1,6 +1,4 @@
 ---
-# Persistent Volume Claim for model caching
-# This allows models to be shared across all worker pods
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -11,14 +9,12 @@ metadata:
     component: model-cache
 spec:
   accessModes:
-    - ReadWriteMany  # Required for sharing across multiple pods
+  - ReadWriteMany
   resources:
     requests:
-      storage: 10Gi  # Adjust based on models used (Whisper large-v3 ~3GB + LID ~1GB + overhead)
-  storageClassName: azurefile  # Change to your storage class (azurefile, nfs, etc.)
+      storage: 10Gi
+  storageClassName: azurefile
 ---
-# One-time job to pre-download models to persistent volume
-# Run this after creating the PVC and before deploying workers
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -37,28 +33,31 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: preloader
-        image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}  # Replace with your image
-        command: ["python", "common/preload_models.py"]
-        args: ["--all", "--cache-dir", "/models"]
+        image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
+        command:
+        - python
+        - common/preload_models.py
+        args:
+        - --all
+        - --cache-dir
+        - /models
         env:
         - name: MODEL_CACHE_DIR
-          value: "/models"
-        # Model configuration (customize as needed)
+          value: /models
         - name: WHISPER_MODEL_NAME
-          value: "large-v3"
+          value: large-v3
         - name: WHISPER_DEVICE
-          value: "cpu"  # Use CPU for preloading
+          value: cpu
         - name: WHISPER_COMPUTE_TYPE
-          value: "float16"
+          value: float16
         - name: LID_MODEL_ID
-          value: "facebook/mms-lid-126"
+          value: facebook/mms-lid-126
         - name: LID_MODEL_REVISION
-          value: "main"
-        # Download retry configuration
+          value: main
         - name: MODEL_DOWNLOAD_MAX_RETRIES
-          value: "5"
+          value: '5'
         - name: MODEL_DOWNLOAD_RETRY_DELAY
-          value: "10"
+          value: '10'
         volumeMounts:
         - name: models
           mountPath: /models
@@ -74,8 +73,6 @@ spec:
         persistentVolumeClaim:
           claimName: speech-flow-models
 ---
-# Optional: CronJob to periodically update models
-# Useful if you want to keep models up-to-date with latest versions
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -85,7 +82,7 @@ metadata:
     app: speech-flow
     component: model-updater
 spec:
-  schedule: "0 2 * * 0"  # Run at 2 AM every Sunday
+  schedule: 0 2 * * 0
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -100,14 +97,19 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: updater
-            image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}  # Replace with your image
-            command: ["python", "common/preload_models.py"]
-            args: ["--all", "--cache-dir", "/models"]
+            image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
+            command:
+            - python
+            - common/preload_models.py
+            args:
+            - --all
+            - --cache-dir
+            - /models
             env:
             - name: MODEL_CACHE_DIR
-              value: "/models"
+              value: /models
             - name: MODEL_DOWNLOAD_MAX_RETRIES
-              value: "5"
+              value: '5'
             volumeMounts:
             - name: models
               mountPath: /models
