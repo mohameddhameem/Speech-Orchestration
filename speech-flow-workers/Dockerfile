@@ -40,36 +40,16 @@ WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
 
 # Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_INPUT=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MODEL_CACHE_DIR=/models
 
-# Set environment variables
-ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_INPUT=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-# Copy worker sources with proper ownership
-COPY --chown=appuser:appuser speech-flow-workers/ .
-
-# Switch to non-root user
-USER appuser
-
-# Health check (basic process check)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import psutil; psutil.Process(1)" 2>/dev/null || exit 1
-
-# Set default model cache directory (can be overridden by volume mount)
-ENV MODEL_CACHE_DIR=/models
-
-# Create model cache directory with proper permissions
+# Create model cache directory BEFORE switching to non-root user
 RUN mkdir -p /models && chown -R appuser:appuser /models
 
 # Copy worker sources with proper ownership
@@ -80,9 +60,9 @@ USER appuser
 
 # Optional: Pre-download models at build time (commented out by default)
 # Uncomment to pre-download models during image build (increases image size but faster startup)
-# Note: This requires running as root user temporarily or adjusting permissions
 # ARG PRELOAD_MODELS=false
-# RUN if [ "$PRELOAD_MODELS" = "true" ]; then \
+# RUN --mount=type=cache,target=/models,uid=1000,gid=1000 \
+#     if [ "$PRELOAD_MODELS" = "true" ]; then \
 #     python -c "from common.model_manager import get_model_manager; \
 #                mm = get_model_manager(); \
 #                mm.load_whisper_model(); \
