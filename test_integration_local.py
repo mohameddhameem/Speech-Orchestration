@@ -21,7 +21,6 @@ Environment:
 
 import io
 import json
-import time
 import wave
 from datetime import datetime
 from typing import Any, Dict, Optional

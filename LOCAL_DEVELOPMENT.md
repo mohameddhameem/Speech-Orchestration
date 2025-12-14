@@ -31,6 +31,7 @@ cp .env.local.example .env
 ```
 
 Key settings:
+
 ```bash
 ENVIRONMENT=LOCAL
 RABBITMQ_URL=******localhost:5672/

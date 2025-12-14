@@ -103,7 +103,7 @@ class WhisperWorker(BaseWorker):
                 "word_count": word_count,
                 "rtf": round(rtf, 3),
             }
-        except Exception as e:
+        except Exception:
             metrics.error_code = "TRANSCRIPTION_ERROR"
             raise
         finally:

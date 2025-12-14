@@ -1,6 +1,7 @@
 # Speech Flow Implementation & Deployment Guide
 
 ## Table of Contents
+
 1. [Component Architecture](#1-component-architecture)
 2. [Identity & Access Management](#2-identity--access-management)
 3. [Azure Infrastructure Setup](#3-azure-infrastructure-setup)
@@ -9,7 +10,7 @@
 6. [Configuration Reference](#6-configuration-reference)
 7. [Deployment Checklist](#7-deployment-checklist)
 
----
+______________________________________________________________________
 
 ## 1. Component Architecture
 
@@ -207,18 +208,18 @@ flowchart TB
                                                        └──Return JSON──▶ Client
 ```
 
----
+______________________________________________________________________
 
 ## 2. Identity & Access Management
 
 ### 2.1 Identity Strategy Overview
 
-| Identity Type | Use Case | Components |
-|---------------|----------|------------|
-| **UAMI** (User Assigned Managed Identity) | Shared identity across multiple pods | Workers, KEDA |
-| **SAMI** (System Assigned Managed Identity) | AKS cluster-level operations | AKS Kubelet |
-| **Workload Identity** | Pod-to-Azure auth (recommended) | All pods |
-| **SPN** (Service Principal) | CI/CD pipelines, local dev | GitHub Actions, Terraform |
+| Identity Type                               | Use Case                             | Components                |
+| ------------------------------------------- | ------------------------------------ | ------------------------- |
+| **UAMI** (User Assigned Managed Identity)   | Shared identity across multiple pods | Workers, KEDA             |
+| **SAMI** (System Assigned Managed Identity) | AKS cluster-level operations         | AKS Kubelet               |
+| **Workload Identity**                       | Pod-to-Azure auth (recommended)      | All pods                  |
+| **SPN** (Service Principal)                 | CI/CD pipelines, local dev           | GitHub Actions, Terraform |
 
 ### 2.2 Required Managed Identities
 
@@ -286,28 +287,28 @@ flowchart TB
 
 ### 2.3 Role Assignment Matrix
 
-| Component | Storage Account | Service Bus | PostgreSQL | Azure OpenAI | Key Vault |
-|-----------|----------------|-------------|------------|--------------|-----------|
-| **API Gateway** | Blob Data Contributor | Data Sender | Read/Write | - | Secrets User |
-| **Router** | - | Data Sender + Receiver | Read/Write | - | Secrets User |
-| **LID Worker** | Blob Data Contributor | Data Sender + Receiver | - | - | Secrets User |
-| **Whisper Worker** | Blob Data Contributor | Data Sender + Receiver | - | - | Secrets User |
-| **Azure AI Worker** | Blob Data Contributor | Data Sender + Receiver | - | OpenAI User | Secrets User |
-| **Dashboard** | - | Data Receiver (read-only) | Read Only | - | Secrets User |
-| **KEDA** | - | Data Receiver (read-only) | - | - | - |
-| **CI/CD (SPN)** | - | - | - | - | Secrets Officer |
+| Component           | Storage Account       | Service Bus               | PostgreSQL | Azure OpenAI | Key Vault       |
+| ------------------- | --------------------- | ------------------------- | ---------- | ------------ | --------------- |
+| **API Gateway**     | Blob Data Contributor | Data Sender               | Read/Write | -            | Secrets User    |
+| **Router**          | -                     | Data Sender + Receiver    | Read/Write | -            | Secrets User    |
+| **LID Worker**      | Blob Data Contributor | Data Sender + Receiver    | -          | -            | Secrets User    |
+| **Whisper Worker**  | Blob Data Contributor | Data Sender + Receiver    | -          | -            | Secrets User    |
+| **Azure AI Worker** | Blob Data Contributor | Data Sender + Receiver    | -          | OpenAI User  | Secrets User    |
+| **Dashboard**       | -                     | Data Receiver (read-only) | Read Only  | -            | Secrets User    |
+| **KEDA**            | -                     | Data Receiver (read-only) | -          | -            | -               |
+| **CI/CD (SPN)**     | -                     | -                         | -          | -            | Secrets Officer |
 
 ### 2.4 Azure RBAC Roles Reference
 
-| Role | ID | Purpose |
-|------|-----|---------|
-| Storage Blob Data Contributor | `ba92f5b4-2d11-453d-a403-e96b0029c9fe` | Read/write blobs |
-| Azure Service Bus Data Sender | `69a216fc-b8fb-44d8-bc22-1f3c2cd27a39` | Send messages |
+| Role                            | ID                                     | Purpose          |
+| ------------------------------- | -------------------------------------- | ---------------- |
+| Storage Blob Data Contributor   | `ba92f5b4-2d11-453d-a403-e96b0029c9fe` | Read/write blobs |
+| Azure Service Bus Data Sender   | `69a216fc-b8fb-44d8-bc22-1f3c2cd27a39` | Send messages    |
 | Azure Service Bus Data Receiver | `4f6d3b9b-027b-4f4c-9142-0e5a2a2247e0` | Receive messages |
-| Cognitive Services OpenAI User | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Call OpenAI APIs |
-| Key Vault Secrets User | `4633458b-17de-408a-b874-0445c86b69e6` | Read secrets |
+| Cognitive Services OpenAI User  | `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` | Call OpenAI APIs |
+| Key Vault Secrets User          | `4633458b-17de-408a-b874-0445c86b69e6` | Read secrets     |
 
----
+______________________________________________________________________
 
 ## 3. Azure Infrastructure Setup
 
@@ -650,7 +651,7 @@ helm install keda kedacore/keda \
   --set podIdentity.azureWorkload.enabled=true
 ```
 
----
+______________________________________________________________________
 
 ## 4. Kubernetes Deployment
 
@@ -780,7 +781,7 @@ kubectl run --rm -it db-init \
   --command -- psql "$DATABASE_URL" -f /app/schema.sql
 ```
 
----
+______________________________________________________________________
 
 ## 5. Automated Deployment
 
@@ -791,6 +792,7 @@ The entire infrastructure can be provisioned using Terraform. All resources are 
 📁 **Location**: [speech-flow-infra/terraform/main.tf](speech-flow-infra/terraform/main.tf)
 
 **Features:**
+
 - Creates all Azure resources with proper naming conventions
 - Provisions 5 User-Assigned Managed Identities with RBAC roles
 - Sets up Federated Credentials for Workload Identity
@@ -820,11 +822,12 @@ terraform output
 ```
 
 **Required Variables:**
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `project` | Project name | `speechflow` |
-| `environment` | Environment | `prod` |
-| `location` | Azure region | `eastus` |
+
+| Variable                  | Description               | Example        |
+| ------------------------- | ------------------------- | -------------- |
+| `project`                 | Project name              | `speechflow`   |
+| `environment`             | Environment               | `prod`         |
+| `location`                | Azure region              | `eastus`       |
 | `postgres_admin_password` | PostgreSQL admin password | (secure value) |
 
 ### 5.2 Kubernetes Deployment Scripts
@@ -832,12 +835,14 @@ terraform output
 After Terraform provisions infrastructure, deploy to Kubernetes using the automated scripts:
 
 **PowerShell (Windows):**
+
 ```powershell
 cd speech-flow-infra
 .\deploy.ps1 -Environment prod
 ```
 
 **Bash (Linux/Mac):**
+
 ```bash
 cd speech-flow-infra
 chmod +x deploy.sh
@@ -845,15 +850,16 @@ chmod +x deploy.sh
 ```
 
 **What the scripts do:**
-1. ✅ Fetch configuration from Azure (Service Bus, Storage, etc.)
-2. ✅ Retrieve Managed Identity Client IDs
-3. ✅ Get secrets from Key Vault
-4. ✅ Substitute variables in Kubernetes manifests
-5. ✅ Install/upgrade KEDA with Workload Identity
-6. ✅ Build and push Docker images to ACR
-7. ✅ Deploy all backend services and workers
-8. ✅ Deploy CronJob for daily aggregation
-9. ✅ Verify deployment status
+
+01. ✅ Fetch configuration from Azure (Service Bus, Storage, etc.)
+02. ✅ Retrieve Managed Identity Client IDs
+03. ✅ Get secrets from Key Vault
+04. ✅ Substitute variables in Kubernetes manifests
+05. ✅ Install/upgrade KEDA with Workload Identity
+06. ✅ Build and push Docker images to ACR
+07. ✅ Deploy all backend services and workers
+08. ✅ Deploy CronJob for daily aggregation
+09. ✅ Verify deployment status
 10. ✅ Display access URLs
 
 ### 5.3 Complete Deployment Workflow
@@ -942,66 +948,71 @@ jobs:
           ./speech-flow-infra/deploy.sh ${{ inputs.environment || 'prod' }}
 ```
 
----
+______________________________________________________________________
 
 ## 6. Configuration Reference
 
 ### 5.1 Environment Variables by Component
 
 #### API Gateway
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `DATABASE_URL` | Secret | PostgreSQL connection string |
-| `SERVICEBUS_CONNECTION_STRING` | Secret | Azure Service Bus connection |
-| `AZURE_STORAGE_CONNECTION_STRING` | Secret | Storage account connection |
-| `ROUTER_QUEUE_NAME` | ConfigMap | Queue for job events |
-| `AUDIO_CONTAINER_NAME` | ConfigMap | Blob container for audio |
-| `RESULTS_CONTAINER_NAME` | ConfigMap | Blob container for results |
+
+| Variable                          | Source    | Description                  |
+| --------------------------------- | --------- | ---------------------------- |
+| `DATABASE_URL`                    | Secret    | PostgreSQL connection string |
+| `SERVICEBUS_CONNECTION_STRING`    | Secret    | Azure Service Bus connection |
+| `AZURE_STORAGE_CONNECTION_STRING` | Secret    | Storage account connection   |
+| `ROUTER_QUEUE_NAME`               | ConfigMap | Queue for job events         |
+| `AUDIO_CONTAINER_NAME`            | ConfigMap | Blob container for audio     |
+| `RESULTS_CONTAINER_NAME`          | ConfigMap | Blob container for results   |
 
 #### Router Service
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `DATABASE_URL` | Secret | PostgreSQL connection string |
-| `SERVICEBUS_CONNECTION_STRING` | Secret | Azure Service Bus connection |
-| `ROUTER_QUEUE_NAME` | ConfigMap | Queue to consume from |
-| `LID_QUEUE_NAME` | ConfigMap | Queue for LID jobs |
-| `WHISPER_QUEUE_NAME` | ConfigMap | Queue for Whisper jobs |
-| `AZURE_AI_QUEUE_NAME` | ConfigMap | Queue for Azure AI jobs |
+
+| Variable                       | Source    | Description                  |
+| ------------------------------ | --------- | ---------------------------- |
+| `DATABASE_URL`                 | Secret    | PostgreSQL connection string |
+| `SERVICEBUS_CONNECTION_STRING` | Secret    | Azure Service Bus connection |
+| `ROUTER_QUEUE_NAME`            | ConfigMap | Queue to consume from        |
+| `LID_QUEUE_NAME`               | ConfigMap | Queue for LID jobs           |
+| `WHISPER_QUEUE_NAME`           | ConfigMap | Queue for Whisper jobs       |
+| `AZURE_AI_QUEUE_NAME`          | ConfigMap | Queue for Azure AI jobs      |
 
 #### Workers (LID, Whisper, Azure AI)
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `SERVICEBUS_CONNECTION_STRING` | Secret | Azure Service Bus connection |
-| `AZURE_STORAGE_CONNECTION_STRING` | Secret | Storage account connection |
-| `AZURE_OPENAI_ENDPOINT` | Secret | OpenAI endpoint (Azure AI only) |
-| `AZURE_OPENAI_KEY` | Secret | OpenAI API key (Azure AI only) |
-| `AZURE_OPENAI_DEPLOYMENT` | ConfigMap | Model deployment name |
-| `NODE_NAME` | Downward API | Kubernetes node name |
-| `NODE_POOL` | Downward API | Node pool label |
-| `HOSTNAME` | Env | Pod name (worker ID) |
+
+| Variable                          | Source       | Description                     |
+| --------------------------------- | ------------ | ------------------------------- |
+| `SERVICEBUS_CONNECTION_STRING`    | Secret       | Azure Service Bus connection    |
+| `AZURE_STORAGE_CONNECTION_STRING` | Secret       | Storage account connection      |
+| `AZURE_OPENAI_ENDPOINT`           | Secret       | OpenAI endpoint (Azure AI only) |
+| `AZURE_OPENAI_KEY`                | Secret       | OpenAI API key (Azure AI only)  |
+| `AZURE_OPENAI_DEPLOYMENT`         | ConfigMap    | Model deployment name           |
+| `NODE_NAME`                       | Downward API | Kubernetes node name            |
+| `NODE_POOL`                       | Downward API | Node pool label                 |
+| `HOSTNAME`                        | Env          | Pod name (worker ID)            |
 
 ### 5.2 Scaling Configuration
 
-| Component | Min Replicas | Max Replicas | Scale Trigger |
-|-----------|--------------|--------------|---------------|
-| API Gateway | 2 | 10 | CPU > 70% |
-| Router | 2 | 5 | CPU > 70% |
-| LID Worker | 0 | 10 | Queue > 5 messages |
-| Whisper Worker | 0 | 5 | Queue > 3 messages |
-| Azure AI Worker | 0 | 10 | Queue > 5 messages |
-| Dashboard | 1 | 3 | CPU > 70% |
+| Component       | Min Replicas | Max Replicas | Scale Trigger      |
+| --------------- | ------------ | ------------ | ------------------ |
+| API Gateway     | 2            | 10           | CPU > 70%          |
+| Router          | 2            | 5            | CPU > 70%          |
+| LID Worker      | 0            | 10           | Queue > 5 messages |
+| Whisper Worker  | 0            | 5            | Queue > 3 messages |
+| Azure AI Worker | 0            | 10           | Queue > 5 messages |
+| Dashboard       | 1            | 3            | CPU > 70%          |
 
----
+______________________________________________________________________
 
 ## 7. Deployment Checklist
 
 ### Pre-Deployment
+
 - [ ] Azure subscription with required quotas (GPU VMs)
 - [ ] Azure CLI installed and authenticated
 - [ ] kubectl configured
 - [ ] Helm installed
 
 ### Infrastructure
+
 - [ ] Resource group created
 - [ ] Managed identities created (5 identities)
 - [ ] Service Bus namespace and queues created
@@ -1013,6 +1024,7 @@ jobs:
 - [ ] RBAC role assignments completed
 
 ### Kubernetes
+
 - [ ] KEDA installed
 - [ ] Namespace created
 - [ ] Service accounts with workload identity created
@@ -1024,6 +1036,7 @@ jobs:
 - [ ] ScaledObjects verified
 
 ### Validation
+
 - [ ] API Gateway health check passing
 - [ ] Router consuming messages
 - [ ] Workers scaling on queue depth
@@ -1032,6 +1045,7 @@ jobs:
 - [ ] Monitoring and alerting configured
 
 ### Post-Deployment
+
 - [ ] SSL/TLS certificates configured
 - [ ] DNS records created
 - [ ] Backup strategy implemented

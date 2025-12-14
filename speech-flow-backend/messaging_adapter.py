@@ -5,10 +5,9 @@ This module provides a unified interface for message queue operations that works
 - RabbitMQ (for local development)
 """
 
-import json
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Optional
 
 
 class MessageBroker(ABC):

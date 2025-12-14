@@ -2,29 +2,34 @@
 
 ## Overview
 
-The Speech Orchestration system uses a centralized model management approach to handle model downloads, caching, and loading for all worker services. This guide explains how the system works and how to configure it for your deployment.
+The Speech Orchestration system uses a centralized model management approach to handle model downloads, caching, and
+loading for all worker services. This guide explains how the system works and how to configure it for your deployment.
 
 ## Architecture
 
 ### Components
 
 1. **ModelManager** (`common/model_manager.py`)
+
    - Centralized model download and caching
    - Retry logic with exponential backoff
    - Model validation
    - Cache management utilities
 
 2. **Model Pre-loader** (`common/preload_models.py`)
+
    - CLI tool for pre-downloading models
    - Useful for container builds and persistent volume initialization
 
 3. **Worker Integration**
+
    - All workers use the ModelManager for consistent model handling
    - Models loaded once at startup and shared globally within each worker process
 
 ## Models Used
 
 ### Whisper Model (Transcription)
+
 - **Model**: faster-whisper (CTranslate2 optimized)
 - **Default Version**: large-v3
 - **Size**: ~3GB
@@ -32,6 +37,7 @@ The Speech Orchestration system uses a centralized model management approach to 
 - **Cache Location**: `/models/whisper/`
 
 ### LID Model (Language Identification)
+
 - **Model**: facebook/mms-lid-126 (Hugging Face)
 - **Size**: ~1GB
 - **Device**: CPU
@@ -42,6 +48,7 @@ The Speech Orchestration system uses a centralized model management approach to 
 ### Environment Variables
 
 #### Cache Directories
+
 ```bash
 # Base cache directory (mount as persistent volume in production)
 MODEL_CACHE_DIR=/models
@@ -55,6 +62,7 @@ WHISPER_CACHE_DIR=/models/whisper
 ```
 
 #### Model Selection
+
 ```bash
 # Whisper configuration
 WHISPER_MODEL_NAME=large-v3          # Options: tiny, base, small, medium, large, large-v2, large-v3
@@ -67,6 +75,7 @@ LID_MODEL_REVISION=main              # Pin to specific commit hash for reproduci
 ```
 
 #### Download Retry Configuration
+
 ```bash
 # Maximum number of download retry attempts
 MODEL_DOWNLOAD_MAX_RETRIES=3
@@ -79,8 +88,7 @@ MODEL_DOWNLOAD_RETRY_DELAY=5
 
 ### Strategy 1: Runtime Download (Default)
 
-**Pros**: Smallest container image size
-**Cons**: Slower first startup, network dependency
+**Pros**: Smallest container image size **Cons**: Slower first startup, network dependency
 
 ```yaml
 # No special configuration needed
@@ -90,8 +98,7 @@ MODEL_DOWNLOAD_RETRY_DELAY=5
 
 ### Strategy 2: Persistent Volume Cache (Recommended for Production)
 
-**Pros**: Fast startup after initial download, shared across pods
-**Cons**: Requires persistent volume setup
+**Pros**: Fast startup after initial download, shared across pods **Cons**: Requires persistent volume setup
 
 #### Step 1: Create Persistent Volume
 
@@ -141,6 +148,7 @@ spec:
 ```
 
 Deploy:
+
 ```bash
 kubectl apply -f pvc-models.yaml
 kubectl apply -f job-preload-models.yaml
@@ -173,8 +181,7 @@ spec:
 
 ### Strategy 3: Pre-built Container Images
 
-**Pros**: Fastest startup, no external dependencies
-**Cons**: Large image size (~5-10GB), longer build times
+**Pros**: Fastest startup, no external dependencies **Cons**: Large image size (~5-10GB), longer build times
 
 #### Build with Pre-loaded Models
 
@@ -196,6 +203,7 @@ docker push your-registry/speech-flow-workers:with-models
 ### Strategy 4: Hybrid Approach (Recommended)
 
 Combine persistent volumes with version-specific images:
+
 - Use persistent volumes for model caching
 - Pin model versions in environment variables
 - Pre-download models to PV for critical workloads
@@ -252,6 +260,7 @@ print(info)
 ### Common Issues
 
 #### Issue: Models downloading repeatedly
+
 **Solution**: Ensure cache directory is persistent (not ephemeral container storage)
 
 ```bash
@@ -263,6 +272,7 @@ kubectl exec -it pod-name -- ls -la /models
 ```
 
 #### Issue: Out of disk space
+
 **Solution**: Increase PVC size or use smaller models
 
 ```bash
@@ -274,6 +284,7 @@ kubectl exec -it pod-name -- du -sh /models/*
 ```
 
 #### Issue: Download failures
+
 **Solution**: Check network connectivity and retry configuration
 
 ```bash
@@ -286,6 +297,7 @@ kubectl logs -f pod-name -n speech-flow
 ```
 
 #### Issue: GPU out of memory
+
 **Solution**: Use lower precision or smaller model
 
 ```bash
@@ -309,6 +321,7 @@ LID_MODEL_REVISION=abc123def456  # Replace with actual commit hash
 ```
 
 To find the commit hash:
+
 ```bash
 # Visit: https://huggingface.co/facebook/mms-lid-126/commits/main
 # Copy the commit hash you want to pin to
@@ -317,16 +330,19 @@ To find the commit hash:
 ## Performance Optimization
 
 ### Reduce Startup Time
+
 1. Use persistent volume cache
 2. Pre-download models during deployment
 3. Use container images with pre-loaded models
 
 ### Reduce Memory Usage
+
 1. Use smaller Whisper models (medium, small, base)
 2. Use int8 quantization: `WHISPER_COMPUTE_TYPE=int8`
 3. Don't load models you don't need
 
 ### Reduce Disk Usage
+
 1. Share persistent volume across all pods
 2. Use only required models
 3. Clear unused model versions
@@ -334,26 +350,32 @@ To find the commit hash:
 ## Best Practices
 
 1. **Use Persistent Volumes in Production**
+
    - Ensures fast, consistent startup times
    - Reduces network traffic and external dependencies
 
 2. **Pin Model Versions**
+
    - Ensures reproducible results
    - Prevents unexpected behavior from model updates
 
 3. **Monitor Cache Usage**
+
    - Set up alerts for disk space
    - Regularly check cache size and clean up if needed
 
 4. **Implement Health Checks**
+
    - Verify models loaded successfully at startup
    - Use validation methods from ModelManager
 
 5. **Test Before Deploying**
+
    - Use preload script to validate models
    - Test with your specific configuration
 
 6. **Document Your Configuration**
+
    - Keep track of model versions used
    - Document any custom configurations
 
@@ -373,6 +395,7 @@ If you're upgrading from the previous model handling approach:
 ### Rollback Plan
 
 If you need to rollback:
+
 1. Remove volume mounts from worker deployments
 2. Workers will fall back to default behavior
 3. Models will download to ephemeral storage
@@ -380,6 +403,7 @@ If you need to rollback:
 ## Support and Troubleshooting
 
 For issues or questions:
+
 1. Check pod logs: `kubectl logs -f pod-name`
 2. Verify cache directory exists and is writable
 3. Check network connectivity for downloads

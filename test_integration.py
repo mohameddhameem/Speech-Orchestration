@@ -8,9 +8,7 @@ Usage:
 """
 
 import io
-import json
 import struct
-import time
 import wave
 from datetime import datetime
 from typing import Optional

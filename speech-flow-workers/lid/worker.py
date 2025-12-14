@@ -92,7 +92,7 @@ class LIDWorker(BaseWorker):
                 "confidence": round(confidence, 4),
                 "audio_duration_seconds": round(audio_duration, 2),
             }
-        except Exception as e:
+        except Exception:
             metrics.error_code = "LID_INFERENCE_ERROR"
             raise
         finally:

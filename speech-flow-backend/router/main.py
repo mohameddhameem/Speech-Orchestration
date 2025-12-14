@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import settings
 from database import SessionLocal
 from models import Job, JobStep
+from sqlalchemy.orm import Session
 
 # Import adapters for multi-environment support
 try:

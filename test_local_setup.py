@@ -4,7 +4,6 @@ Quick test script to verify local environment setup
 Tests messaging, storage, and AI adapters in LOCAL mode
 """
 
-import json
 import os
 import sys
 
