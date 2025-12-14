@@ -209,9 +209,11 @@ services:
     restart: unless-stopped
 
   upload-ui:
-    image: localhost/speechflow-backend:latest
+    build:
+      context: ./speech-flow-ui
+      dockerfile: Dockerfile
+    image: localhost/speechflow-ui:latest
     container_name: speechflow-upload-ui
-    command: streamlit run dashboard/upload_ui.py --server.port=8502 --server.address=0.0.0.0
     ports:
       - "8502:8502"
     environment:

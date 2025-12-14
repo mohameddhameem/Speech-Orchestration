@@ -99,11 +99,17 @@ DefaultAzureCredential automatically tries authentication methods in this order:
 speech-flow-backend/
   ├── api/              # REST API endpoints
   ├── router/           # Job orchestration
-  ├── dashboard/        # Streamlit dashboard
+  ├── dashboard/        # Operations monitoring dashboard
   ├── config.py         # Configuration
   ├── messaging_adapter.py   # Message queue abstraction
   ├── storage_adapter.py     # Storage abstraction
   └── requirements.txt
+
+speech-flow-ui/
+  ├── app.py            # Self-service upload UI
+  ├── requirements.txt  # UI dependencies
+  ├── Dockerfile       # Container image
+  └── README.md
 
 speech-flow-workers/
   ├── common/
