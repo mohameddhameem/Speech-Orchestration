@@ -68,9 +68,7 @@ services:
 
   # Backend Services
   api:
-    build:
-      context: .
-      dockerfile: speech-flow-backend/Dockerfile
+    image: localhost/speechflow-backend:latest
     container_name: speechflow-api
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
@@ -109,9 +107,7 @@ services:
     restart: unless-stopped
 
   router:
-    build:
-      context: .
-      dockerfile: speech-flow-backend/Dockerfile
+    image: localhost/speechflow-backend:latest
     container_name: speechflow-router
     command: python router/main.py
     environment:
@@ -141,9 +137,7 @@ services:
     restart: unless-stopped
 
   dashboard:
-    build:
-      context: .
-      dockerfile: speech-flow-backend/Dockerfile
+    image: localhost/speechflow-backend:latest
     container_name: speechflow-dashboard
     command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
     ports:
@@ -178,9 +172,7 @@ services:
 
   # Workers (Scaled to 0 by default in compose, bring up manually if needed)
   worker-lid:
-    build:
-      context: .
-      dockerfile: speech-flow-workers/Dockerfile
+    image: localhost/speechflow-workers:opt
     container_name: speechflow-worker-lid
     command: python lid/worker.py
     environment:

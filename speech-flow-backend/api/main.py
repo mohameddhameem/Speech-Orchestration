@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import get_db
-from models import Job, ProcessingStep
+from models import Job, JobStep
 
 
 app = FastAPI(
@@ -297,11 +297,11 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Get processing steps
-    steps = db.query(ProcessingStep).filter(ProcessingStep.job_id == job_id).all()
+    steps = db.query(JobStep).filter(JobStep.job_id == job_id).all()
     
     step_statuses = [
         StepStatus(
-            step_type=step.step_type,
+            step_type=step.step_name,
             status=step.status,
             started_at=step.started_at,
             completed_at=step.completed_at,
@@ -343,8 +343,8 @@ async def get_job_results(job_id: str, db: Session = Depends(get_db)):
         )
     
     # Get processing steps to find completed ones
-    steps = db.query(ProcessingStep).filter(ProcessingStep.job_id == job_id).all()
-    completed_steps = {step.step_type: step for step in steps if step.status == "completed"}
+    steps = db.query(JobStep).filter(JobStep.job_id == job_id).all()
+    completed_steps = {step.step_name: step for step in steps if step.status == "completed"}
     
     # Build results response
     results = JobResultsResponse(
