@@ -3,11 +3,11 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies
-COPY requirements.txt .
+COPY speech-flow-ui/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application
-COPY app.py .
+COPY speech-flow-ui/app.py ./app.py
 
 # Expose Streamlit port
 EXPOSE 8502

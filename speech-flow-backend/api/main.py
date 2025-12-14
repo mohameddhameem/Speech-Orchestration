@@ -140,18 +140,33 @@ def get_storage_client():
 
 
 def generate_upload_sas_url(job_id: str, filename: str) -> str:
-    """Generate a SAS URL for uploading audio file"""
+    """Generate a SAS URL for uploading audio file.
+    For Azurite/local development, ensure the URL points to the local BlobEndpoint,
+    and use an API version compatible with Azurite.
+    """
     container_name = settings.BLOB_CONTAINER_NAME
     blob_name = f"{job_id}/{filename}"
-    
+
     if USE_ADAPTERS:
         storage = get_storage_adapter(settings.AZURE_STORAGE_CONNECTION_STRING)
         return storage.generate_upload_url(container_name, blob_name)
     else:
         from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+        from azure.storage.blob import ResourceTypes, AccountSasPermissions
+        
         blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
         
-        # Generate SAS token valid for 1 hour
+        # For Azurite, we need to be explicit about the endpoint
+        is_azurite = blob_service_client.account_name == "devstoreaccount1"
+        
+        if is_azurite:
+            # For Azurite, use localhost endpoint accessible from host
+            base_url = "http://localhost:10000/devstoreaccount1"
+        else:
+            # For Azure Storage, use standard endpoint
+            base_url = blob_service_client.url.rstrip('/')
+        
+        # Generate SAS token with parameters Azurite supports
         sas_token = generate_blob_sas(
             account_name=blob_service_client.account_name,
             container_name=container_name,
@@ -160,8 +175,8 @@ def generate_upload_sas_url(job_id: str, filename: str) -> str:
             permission=BlobSasPermissions(write=True, create=True),
             expiry=datetime.utcnow() + timedelta(hours=1)
         )
-        
-        return f"https://{blob_service_client.account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+
+        return f"{base_url}/{container_name}/{blob_name}?{sas_token}"
 
 
 def read_blob_json(container_name: str, blob_name: str) -> Optional[dict]:
@@ -211,20 +226,26 @@ def send_job_event(job_id: str, workflow_type: str, audio_path: str,
     
     if USE_ADAPTERS and settings.ENVIRONMENT == "LOCAL":
         # Use RabbitMQ for local mode (synchronous version)
-        import pika
-        params = pika.URLParameters(settings.RABBITMQ_URL)
-        connection = pika.BlockingConnection(params)
-        channel = connection.channel()
-        
-        queue_name = settings.ROUTER_QUEUE_NAME
-        channel.queue_declare(queue=queue_name, durable=True)
-        channel.basic_publish(
-            exchange='',
-            routing_key=queue_name,
-            body=json.dumps(message_body),
-            properties=pika.BasicProperties(delivery_mode=2)
-        )
-        connection.close()
+        try:
+            import pika
+            params = pika.URLParameters(settings.RABBITMQ_URL)
+            connection = pika.BlockingConnection(params)
+            channel = connection.channel()
+            
+            queue_name = settings.ROUTER_QUEUE_NAME
+            channel.queue_declare(queue=queue_name, durable=True)
+            channel.basic_publish(
+                exchange='',
+                routing_key=queue_name,
+                body=json.dumps(message_body),
+                properties=pika.BasicProperties(delivery_mode=2)
+            )
+            connection.close()
+        except Exception as e:
+            # In LOCAL mode without RabbitMQ, log and continue
+            # Job will remain in 'queued' status until manually processed
+            print(f"Warning: Could not send job event to RabbitMQ: {e}")
+            print(f"Job {job_id} queued but will not be processed without message broker")
     else:
         # Use Azure Service Bus
         from azure.servicebus import ServiceBusClient

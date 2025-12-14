@@ -154,7 +154,13 @@ class AzureBlobStorageAdapter(StorageAdapter):
                 expiry=datetime.utcnow() + timedelta(hours=1)
             )
             
-            return f"https://{self.client.account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+            # For Azurite, use localhost endpoint accessible from host
+            if self.client.account_name == "devstoreaccount1":
+                base_url = "http://localhost:10000/devstoreaccount1"
+            else:
+                base_url = self.client.url.rstrip('/')
+            
+            return f"{base_url}/{container_name}/{blob_name}?{sas_token}"
         else:
             # For production with DefaultAzureCredential, generate user delegation SAS
             from azure.storage.blob import generate_blob_sas, BlobSasPermissions, UserDelegationKey
@@ -268,28 +274,26 @@ def get_storage_adapter(
     """
     environment = os.getenv("ENVIRONMENT", "AZURE").upper()
     
-    if environment == "LOCAL":
-        # Use local filesystem for local development
+    # Check if connection string provided
+    if connection_string is None:
+        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+    
+    # Check if this is Azurite (connection string with devstoreaccount1)
+    use_azurite = "devstoreaccount1" in connection_string or "BlobEndpoint=http://" in connection_string
+    
+    if environment == "LOCAL" and not use_azurite:
+        # Use local filesystem for local development (no Azurite)
         base_path = os.getenv("LOCAL_STORAGE_PATH", "/tmp/speech-flow-storage")
         return LocalFileStorageAdapter(base_path)
+    elif use_azurite:
+        # Use Azurite with connection string (LOCAL mode with Azurite)
+        return AzureBlobStorageAdapter(
+            use_connection_string=True,
+            connection_string=connection_string
+        )
     else:
-        # Use Azure Blob Storage
-        # Check if connection string provided (for Azurite)
-        if connection_string is None:
-            connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-        
-        # Check if this is Azurite (connection string with devstoreaccount1)
-        use_connection_string = "devstoreaccount1" in connection_string or "127.0.0.1" in connection_string
-        
-        if not use_connection_string:
-            # Production: Use DefaultAzureCredential
-            if account_url is None:
-                account_url = os.getenv("AZURE_STORAGE_ACCOUNT_URL", "")
-            return AzureBlobStorageAdapter(account_url=account_url, use_connection_string=False)
-        else:
-            # Azurite: Use connection string
-            return AzureBlobStorageAdapter(
-                use_connection_string=True,
-                connection_string=connection_string
-            )
+        # Production: Use Azure Blob Storage with DefaultAzureCredential
+        if account_url is None:
+            account_url = os.getenv("AZURE_STORAGE_ACCOUNT_URL", "")
+        return AzureBlobStorageAdapter(account_url=account_url, use_connection_string=False)
 
