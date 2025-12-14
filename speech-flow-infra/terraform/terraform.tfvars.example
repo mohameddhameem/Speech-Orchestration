@@ -1,0 +1,14 @@
+# Speech Flow - Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in the values
+
+# Project Configuration
+project     = "speechflow"
+environment = "prod"  # Options: dev, staging, prod
+location    = "eastus"
+
+# PostgreSQL Configuration
+postgres_admin_password = "CHANGE_ME_TO_SECURE_PASSWORD"
+
+# AKS Configuration
+aks_node_count  = 2
+enable_gpu_pool = true  # Set to false if GPU is not needed

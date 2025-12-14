@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router-service
+  namespace: speech-flow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: router-service
+  template:
+    metadata:
+      labels:
+        app: router-service
+    spec:
+      containers:
+      - name: router
+        image: speech-flow-backend:latest
+        command: ["python", "router/main.py"]
+        envFrom:
+        - secretRef:
+            name: speech-flow-secrets

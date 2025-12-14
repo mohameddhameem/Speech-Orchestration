@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-dashboard
+  namespace: speech-flow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ops-dashboard
+  template:
+    metadata:
+      labels:
+        app: ops-dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: speech-flow-backend:latest
+        command: ["streamlit", "run", "dashboard/app.py", "--server.port", "8501"]
+        envFrom:
+        - secretRef:
+            name: speech-flow-secrets
+        ports:
+        - containerPort: 8501
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-dashboard
+  namespace: speech-flow
+spec:
+  type: LoadBalancer
+  selector:
+    app: ops-dashboard
+  ports:
+  - port: 80
+    targetPort: 8501

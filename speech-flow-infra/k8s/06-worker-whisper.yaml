@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-whisper
+  namespace: speech-flow
+spec:
+  selector:
+    matchLabels:
+      app: worker-whisper
+  template:
+    metadata:
+      labels:
+        app: worker-whisper
+    spec:
+      tolerations:
+      - key: "sku"
+        operator: "Equal"
+        value: "gpu"
+        effect: "NoSchedule"
+      containers:
+      - name: worker
+        image: speech-flow-workers:latest
+        command: ["python", "whisper/worker.py"]
+        envFrom:
+        - secretRef:
+            name: speech-flow-secrets
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: whisper-scaler
+  namespace: speech-flow
+spec:
+  scaleTargetRef:
+    name: worker-whisper
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+  - type: azure-servicebus
+    metadata:
+      queueName: whisper-jobs
+      connectionFromEnv: SERVICEBUS_CONNECTION_STRING
+      messageCount: "1"

@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # Infrastructure
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: speechflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./speech-flow-infra/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000"
+
+  # We use RabbitMQ to simulate Service Bus locally if we abstract the transport, 
+  # but since our code uses `azure-servicebus` SDK directly, we can't easily mock it 
+  # without a complex mock server. 
+  # For local dev, it's often easier to connect to a REAL Azure Service Bus Dev Namespace.
+  # However, for the sake of this example, I'll leave a placeholder comment.
+  # To run fully offline, we'd need to wrap the messaging logic in an interface 
+  # and have a RabbitMQ implementation.
+
+  # Backend Services
+  api:
+    build:
+      context: .
+      dockerfile: speech-flow-backend/Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
+      # Point to local Azurite
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      # REAL Service Bus Connection String needed here for now
+      SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+    depends_on:
+      - postgres
+      - azurite
+    volumes:
+      - ./speech-flow-backend:/app
+
+  router:
+    build:
+      context: .
+      dockerfile: speech-flow-backend/Dockerfile
+    command: python router/main.py
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
+      SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+    depends_on:
+      - postgres
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: speech-flow-backend/Dockerfile
+    command: streamlit run dashboard/app.py
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/speechflow
+      SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+
+  # Workers (Scaled to 0 by default in compose, bring up manually if needed)
+  worker-lid:
+    build:
+      context: .
+      dockerfile: speech-flow-workers/Dockerfile
+    command: python lid/worker.py
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      SERVICEBUS_CONNECTION_STRING: ${SERVICEBUS_CONNECTION_STRING}
+
+volumes:
+  postgres_data:

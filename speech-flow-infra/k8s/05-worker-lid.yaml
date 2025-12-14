@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-lid
+  namespace: speech-flow
+spec:
+  selector:
+    matchLabels:
+      app: worker-lid
+  template:
+    metadata:
+      labels:
+        app: worker-lid
+    spec:
+      containers:
+      - name: worker
+        image: speech-flow-workers:latest
+        command: ["python", "lid/worker.py"]
+        envFrom:
+        - secretRef:
+            name: speech-flow-secrets
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: lid-scaler
+  namespace: speech-flow
+spec:
+  scaleTargetRef:
+    name: worker-lid
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  triggers:
+  - type: azure-servicebus
+    metadata:
+      queueName: lid-jobs
+      connectionFromEnv: SERVICEBUS_CONNECTION_STRING
+      messageCount: "5"

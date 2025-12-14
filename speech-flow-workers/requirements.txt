@@ -1,0 +1,8 @@
+torch
+torchaudio
+faster-whisper
+azure-ai-textanalytics
+azure-cognitiveservices-speech
+azure-servicebus
+azure-storage-blob
+psycopg2-binary

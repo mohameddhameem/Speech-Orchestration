@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-azure
+  namespace: speech-flow
+spec:
+  selector:
+    matchLabels:
+      app: worker-azure
+  template:
+    metadata:
+      labels:
+        app: worker-azure
+    spec:
+      containers:
+      - name: worker
+        image: speech-flow-workers:latest
+        command: ["python", "azure_ai/worker.py"]
+        envFrom:
+        - secretRef:
+            name: speech-flow-secrets
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: azure-scaler
+  namespace: speech-flow
+spec:
+  scaleTargetRef:
+    name: worker-azure
+  minReplicaCount: 0
+  maxReplicaCount: 20
+  triggers:
+  - type: azure-servicebus
+    metadata:
+      queueName: azure-ai-jobs
+      connectionFromEnv: SERVICEBUS_CONNECTION_STRING
+      messageCount: "10"
