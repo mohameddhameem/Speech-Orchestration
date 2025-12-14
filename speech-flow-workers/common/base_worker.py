@@ -1,3 +1,10 @@
+"""Base worker class for speech processing pipeline.
+
+This module provides the foundation for all worker services in the speech processing
+pipeline, handling message queue operations, storage operations, metrics collection,
+and error handling.
+"""
+
 import os
 import json
 import asyncio
@@ -7,8 +14,8 @@ import time
 import sys
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from dataclasses import dataclass, field, asdict
-from typing import Optional
+from dataclasses import dataclass, asdict
+from typing import Optional, Dict, Any
 
 # Add parent directory to path for backend modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'speech-flow-backend'))
@@ -28,10 +35,35 @@ except ImportError:
 
 @dataclass
 class StepMetrics:
+    """Metrics collected during step processing for performance analysis.
+    
+    Attributes:
+        queued_at: Timestamp when message was queued
+        dequeued_at: Timestamp when message was dequeued
+        started_at: Timestamp when processing started
+        completed_at: Timestamp when processing completed
+        queue_wait_ms: Time spent waiting in queue (milliseconds)
+        processing_duration_ms: Time spent processing (milliseconds)
+        worker_id: Unique identifier for the worker instance
+        worker_node: Node name where worker is running
+        worker_node_pool: Node pool name for worker
+        model_name: Name of the model used for processing
+        model_version: Version of the model used
+        detected_language: Language detected (LID worker)
+        language_confidence: Confidence score for language detection
+        transcript_word_count: Number of words in transcript
+        transcript_char_count: Number of characters in transcript
+        transcription_rtf: Real-time factor for transcription
+        audio_duration_seconds: Duration of audio file
+        prompt_tokens: Number of prompt tokens (AI worker)
+        completion_tokens: Number of completion tokens (AI worker)
+        total_tokens: Total tokens used (AI worker)
+        api_cost_usd: API cost in USD (AI worker)
+        error_code: Error code if processing failed
+        error_message: Error message if processing failed
     """
-    Metrics collected during step processing for performance analysis.
-    """
-    # Timing (set by BaseWorker)
+    
+    # Timing metrics
     queued_at: Optional[datetime] = None
     dequeued_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
@@ -39,26 +71,26 @@ class StepMetrics:
     queue_wait_ms: Optional[int] = None
     processing_duration_ms: Optional[int] = None
     
-    # Worker info (set by BaseWorker)
+    # Worker info
     worker_id: Optional[str] = None
     worker_node: Optional[str] = None
     worker_node_pool: Optional[str] = None
     
-    # Model info (set by subclass)
+    # Model info
     model_name: Optional[str] = None
     model_version: Optional[str] = None
     
-    # LID metrics (set by LID worker)
+    # LID metrics
     detected_language: Optional[str] = None
     language_confidence: Optional[float] = None
     
-    # Transcription metrics (set by Whisper worker)
+    # Transcription metrics
     transcript_word_count: Optional[int] = None
     transcript_char_count: Optional[int] = None
-    transcription_rtf: Optional[float] = None  # Real-time factor
+    transcription_rtf: Optional[float] = None
     audio_duration_seconds: Optional[float] = None
     
-    # Azure OpenAI metrics (set by Azure AI worker)
+    # AI model metrics
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
@@ -68,8 +100,12 @@ class StepMetrics:
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     
-    def to_dict(self) -> dict:
-        """Convert to dict, handling datetime serialization"""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert metrics to dictionary with proper serialization.
+        
+        Returns:
+            Dictionary with metrics, datetime values converted to ISO format
+        """
         result = {}
         for key, value in asdict(self).items():
             if isinstance(value, datetime):
@@ -80,62 +116,95 @@ class StepMetrics:
 
 
 class BaseWorker(ABC):
-    """
-    Base class for all workers. Handles:
-    - Service Bus connection and message loop
-    - Blob storage download/upload
+    """Base class for all workers in the speech processing pipeline.
+    
+    Provides common functionality for:
+    - Message queue operations (Azure Service Bus or RabbitMQ)
+    - Blob storage operations (Azure Blob or local filesystem)
     - Error handling and reporting
     - Graceful shutdown
-    - Idempotency checks (prevents duplicate processing)
+    - Idempotency checks
     - Performance metrics collection
+    
+    Subclasses must implement the `process()` method to define
+    worker-specific processing logic.
     """
     
-    # Cost per 1000 tokens for Azure OpenAI (configurable)
-    COST_PER_1K_INPUT_TOKENS = float(os.getenv("AZURE_OPENAI_INPUT_COST", "0.01"))
-    COST_PER_1K_OUTPUT_TOKENS = float(os.getenv("AZURE_OPENAI_OUTPUT_COST", "0.03"))
+    # Cost per 1000 tokens for Azure OpenAI (configurable via env vars)
+    COST_PER_1K_INPUT_TOKENS: float = float(os.getenv("AZURE_OPENAI_INPUT_COST", "0.01"))
+    COST_PER_1K_OUTPUT_TOKENS: float = float(os.getenv("AZURE_OPENAI_OUTPUT_COST", "0.03"))
     
     def __init__(self, queue_name: str, step_name: str):
+        """Initialize worker with queue and step configuration.
+        
+        Args:
+            queue_name: Name of the message queue to process
+            step_name: Name of the processing step (e.g., "LID", "TRANSCRIBE")
+        """
         self.queue_name = queue_name
         self.step_name = step_name
         self.running = True
         
         # Configuration from environment
-        self.servicebus_conn_str = os.getenv("SERVICEBUS_CONNECTION_STRING", "")
-        self.storage_conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-        self.blob_container_raw = os.getenv("BLOB_CONTAINER_NAME", "raw-audio")
-        self.blob_container_results = os.getenv("BLOB_CONTAINER_RESULTS", "results")
-        self.router_queue = os.getenv("ROUTER_QUEUE_NAME", "job-events")
+        self.servicebus_conn_str: str = os.getenv("SERVICEBUS_CONNECTION_STRING", "")
+        self.storage_conn_str: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+        self.blob_container_raw: str = os.getenv("BLOB_CONTAINER_NAME", "raw-audio")
+        self.blob_container_results: str = os.getenv("BLOB_CONTAINER_RESULTS", "results")
+        self.router_queue: str = os.getenv("ROUTER_QUEUE_NAME", "job-events")
         
         # Database connection for idempotency checks
-        self.db_url = os.getenv("DATABASE_URL", "")
+        self.db_url: str = os.getenv("DATABASE_URL", "")
         
         # Worker identification
-        self.worker_id = os.getenv("HOSTNAME", socket.gethostname())
-        self.worker_node = os.getenv("NODE_NAME", "unknown")
-        self.worker_node_pool = os.getenv("NODE_POOL", "default")
+        self.worker_id: str = os.getenv("HOSTNAME", socket.gethostname())
+        self.worker_node: str = os.getenv("NODE_NAME", "unknown")
+        self.worker_node_pool: str = os.getenv("NODE_POOL", "default")
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._shutdown_handler)
         signal.signal(signal.SIGINT, self._shutdown_handler)
     
-    def _shutdown_handler(self, signum, frame):
+    def _shutdown_handler(self, signum: int, frame: Any) -> None:
+        """Handle shutdown signals for graceful termination.
+        
+        Args:
+            signum: Signal number
+            frame: Current stack frame
+        """
         print(f"Received shutdown signal. Finishing current job...")
         self.running = False
     
     def _now_utc(self) -> datetime:
-        """Get current UTC time"""
+        """Get current UTC timestamp.
+        
+        Returns:
+            Current datetime in UTC
+        """
         return datetime.now(timezone.utc)
     
     def _calculate_api_cost(self, prompt_tokens: int, completion_tokens: int) -> float:
-        """Calculate Azure OpenAI API cost"""
+        """Calculate Azure OpenAI API cost based on token usage.
+        
+        Args:
+            prompt_tokens: Number of tokens in the prompt
+            completion_tokens: Number of tokens in the completion
+            
+        Returns:
+            Cost in USD, rounded to 6 decimal places
+        """
         input_cost = (prompt_tokens / 1000) * self.COST_PER_1K_INPUT_TOKENS
         output_cost = (completion_tokens / 1000) * self.COST_PER_1K_OUTPUT_TOKENS
         return round(input_cost + output_cost, 6)
     
     def download_audio(self, blob_name: str, local_path: str) -> int:
-        """
-        Download audio file from blob storage.
-        Returns: file size in bytes
+        """Download audio file from blob storage.
+        
+        Args:
+            blob_name: Name of the blob/file in storage
+            local_path: Local path where file should be saved
+            
+        Returns:
+            Size of downloaded file in bytes
         """
         if USE_ADAPTERS:
             storage = get_storage_adapter(self.storage_conn_str)
