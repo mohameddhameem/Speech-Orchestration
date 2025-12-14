@@ -13,7 +13,6 @@ All business logic is handled by the API - this is just a UI wrapper.
 import streamlit as st
 import requests
 import pandas as pd
-import time
 import io
 import os
 from typing import Optional, Dict, Any
@@ -67,7 +66,7 @@ def upload_audio_file(upload_url: str, audio_file) -> bool:
         response = requests.put(upload_url, data=audio_file.getvalue(), headers=headers)
         response.raise_for_status()
         return True
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         st.error(f"Upload failed: {str(e)}")
         return False
 
@@ -285,9 +284,7 @@ if st.session_state.job_id:
         
         # Auto-refresh for in-progress jobs
         if st.session_state.job_status in ["queued", "processing"]:
-            st.info("🔄 Job is processing... Page will auto-refresh in 5 seconds")
-            time.sleep(5)
-            st.rerun()
+            st.info("🔄 Job is processing... Click 'Refresh Status' button above to update")
         
         # Download results for completed jobs
         if st.session_state.job_status in ["completed", "partial_complete"]:
