@@ -62,6 +62,8 @@ class WhisperWorker(BaseWorker):
         local_filename = f"/tmp/{job_id}.wav"
         
         # Record model info
+        # Note: MODEL_NAME from model_metadata already includes 'whisper-' prefix
+        # e.g., "whisper-large-v3" not just "large-v3"
         metrics.model_name = MODEL_NAME
         metrics.model_version = MODEL_VERSION
         

@@ -11,7 +11,6 @@ This module provides centralized model management for all workers including:
 
 import os
 import time
-import hashlib
 from pathlib import Path
 from typing import Optional, Tuple, Any
 import logging

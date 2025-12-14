@@ -1,6 +1,9 @@
 """
 Basic validation tests for the model management system.
 This is a simple smoke test to verify the model manager is working.
+
+Note: Uses direct module import to avoid dependency chain issues.
+In production, workers will import via proper package structure.
 """
 
 import os
@@ -8,7 +11,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Add current directory to path to import model_manager directly
+# Direct import of model_manager module for testing
+# This avoids the dependency chain (common.__init__ -> base_worker -> azure imports)
+# Production code uses: from common.model_manager import get_model_manager
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
