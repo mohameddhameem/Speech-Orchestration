@@ -1,0 +1,57 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache
+htmlcov/
+
+# Docker
+Dockerfile
+docker-compose*.yaml
+.dockerignore
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Temporary files
+*.tmp
+*.log
+
+# Environment
+.env
+.env.local
+
+# Misc
+.terraform/
+terraform.tfvars
+*.tfstate*

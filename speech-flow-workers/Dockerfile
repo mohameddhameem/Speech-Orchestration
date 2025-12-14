@@ -1,21 +1,62 @@
-# Workers Dockerfile
+# Workers Dockerfile - Multi-stage build with security hardening
+
+# Stage 1: Builder
+FROM python:3.10-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies only in builder stage
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install build tools
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Copy requirements first (better layer caching)
+COPY speech-flow-workers/requirements.txt .
+
+# Create virtual environment and install dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Runtime
 FROM python:3.10-slim
+
+# Install only runtime dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y libpq-dev gcc git
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
-# Install PyTorch (CPU version for LID/Azure, GPU version for Whisper)
-# For simplicity, we use a base that supports both, or you can split Dockerfiles.
-# Here we assume a GPU-capable base for Whisper, or standard for others.
-# For production, create separate Dockerfiles for GPU vs CPU workers.
+# Set environment variables
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_INPUT=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy worker sources with proper ownership
+COPY --chown=appuser:appuser speech-flow-workers/ .
 
-# Copy worker sources
-COPY . .
+# Switch to non-root user
+USER appuser
+
+# Health check (basic process check)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import psutil; psutil.Process(1)" 2>/dev/null || exit 1
 
 # Default command (overridden by k8s)
 CMD ["python", "lid/worker.py"]
