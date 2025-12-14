@@ -16,21 +16,32 @@ The system supports two modes:
 
 ## Quick Start
 
-### 1. Set Environment to LOCAL
+### Option 1: Using docker-compose.local.yml (Recommended)
 
-Create a `.env` file in the root directory:
+The easiest way to start in local mode:
+
+```bash
+# Use the local override file
+docker-compose -f docker-compose.yaml -f docker-compose.local.yml up -d postgres rabbitmq azurite api router dashboard
+```
+
+This automatically sets `ENVIRONMENT=LOCAL` for all services.
+
+### Option 2: Using .env file
+
+1. Create a `.env` file in the root directory:
 
 ```bash
 cp .env.local.example .env
 ```
 
-Edit `.env` and ensure `ENVIRONMENT=LOCAL` is set:
+2. Edit `.env` and ensure `ENVIRONMENT=LOCAL` is set:
 
 ```
 ENVIRONMENT=LOCAL
 ```
 
-### 2. Start Services
+3. Start Services
 
 Start the infrastructure and backend services:
 
@@ -51,7 +62,10 @@ This will start:
 Workers can be started individually based on your needs:
 
 ```bash
-# Language Identification worker
+# Using local override file (recommended)
+docker-compose -f docker-compose.yaml -f docker-compose.local.yml up -d worker-lid
+
+# Or with .env file
 docker-compose up -d worker-lid
 
 # Add more workers as needed

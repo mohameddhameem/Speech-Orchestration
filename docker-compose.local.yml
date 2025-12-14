@@ -1,0 +1,31 @@
+# Docker Compose Override for Local Development
+# This file is automatically loaded when using docker-compose
+# It configures all services for LOCAL mode by default
+
+version: '3.8'
+
+services:
+  api:
+    environment:
+      ENVIRONMENT: LOCAL
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      LOCAL_STORAGE_PATH: /app/storage
+
+  router:
+    environment:
+      ENVIRONMENT: LOCAL
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+
+  dashboard:
+    environment:
+      ENVIRONMENT: LOCAL
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+
+  worker-lid:
+    environment:
+      ENVIRONMENT: LOCAL
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      LOCAL_STORAGE_PATH: /app/storage
+      # HuggingFace model configuration
+      HF_SUMMARIZATION_MODEL: facebook/bart-large-cnn
+      HF_TRANSLATION_MODEL: Helsinki-NLP/opus-mt-{src}-{tgt}
