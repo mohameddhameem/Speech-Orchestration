@@ -362,7 +362,7 @@ jobs_df = get_recent_jobs()
 if not jobs_df.empty:
     # Format the dataframe for display
     # Ensure numeric before rounding to avoid TypeError
-    jobs_df["duration_seconds"] = pd.to_numeric(jobs_df["duration_seconds"], errors='coerce').round(1)
+    jobs_df["duration_seconds"] = pd.to_numeric(jobs_df["duration_seconds"], errors="coerce").round(1)
     jobs_df["total_cost_usd"] = jobs_df["total_cost_usd"].apply(lambda x: f"${float(x):.4f}" if x else "-")
     jobs_df["audio_duration_seconds"] = jobs_df["audio_duration_seconds"].apply(
         lambda x: f"{float(x):.1f}s" if x else "-"
