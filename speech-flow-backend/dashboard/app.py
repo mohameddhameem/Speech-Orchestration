@@ -361,12 +361,12 @@ st.header("📋 Recent Jobs")
 jobs_df = get_recent_jobs()
 if not jobs_df.empty:
     # Format the dataframe for display
-    jobs_df["duration_seconds"] = jobs_df["duration_seconds"].round(1)
+    # Ensure numeric before rounding to avoid TypeError
+    jobs_df["duration_seconds"] = pd.to_numeric(jobs_df["duration_seconds"], errors='coerce').round(1)
     jobs_df["total_cost_usd"] = jobs_df["total_cost_usd"].apply(lambda x: f"${float(x):.4f}" if x else "-")
     jobs_df["audio_duration_seconds"] = jobs_df["audio_duration_seconds"].apply(
         lambda x: f"{float(x):.1f}s" if x else "-"
     )
-
     # Add status emoji
     status_emoji = {"COMPLETED": "✅", "FAILED": "❌", "PROCESSING": "🔄", "PENDING": "⏳", "QUEUED": "📥"}
     jobs_df["status"] = jobs_df["status"].apply(lambda x: f"{status_emoji.get(x, '')} {x}")

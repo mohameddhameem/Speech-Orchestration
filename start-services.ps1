@@ -23,7 +23,7 @@ podman run -d `
   -p 5432:5432 `
   -v postgres_data:/var/lib/postgresql/data `
   -v ${PWD}/speech-flow-infra/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro `
-  --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID `
+  --cap-drop=ALL --cap-add=SETUID --cap-add=SETGID --cap-add=CHOWN --cap-add=DAC_OVERRIDE `
   --security-opt=no-new-privileges:true `
   postgres:14-alpine
 
@@ -44,6 +44,19 @@ podman run -d `
 # Wait for Azurite to be ready
 Write-Host "Waiting for Azurite to be ready..." -ForegroundColor Yellow
 Start-Sleep -Seconds 5
+
+# Start RabbitMQ (for local message broker)
+Write-Host "`nStarting RabbitMQ..." -ForegroundColor Cyan
+podman run -d `
+  --name rabbitmq `
+  --network speech-flow `
+  -p 5672:5672 -p 15672:15672 `
+  -e RABBITMQ_DEFAULT_USER=guest `
+  -e RABBITMQ_DEFAULT_PASS=guest `
+  rabbitmq:3-management
+
+Write-Host "Waiting for RabbitMQ to be ready..." -ForegroundColor Yellow
+Start-Sleep -Seconds 10
 
 # Start API
 Write-Host "`nStarting API service..." -ForegroundColor Cyan
@@ -68,7 +81,8 @@ podman run -d `
   --network speech-flow `
   -e ENVIRONMENT=LOCAL `
   -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
-  -e SERVICEBUS_CONNECTION_STRING=$env:SERVICEBUS_CONNECTION_STRING `
+  -e RABBITMQ_URL="amqp://guest:guest@rabbitmq:5672/" `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
   --cap-drop=ALL `
   --security-opt=no-new-privileges:true `
   localhost/speechflow-backend:latest `
@@ -82,22 +96,79 @@ podman run -d `
   -e ENVIRONMENT=LOCAL `
   -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
   -e SERVICEBUS_CONNECTION_STRING=$env:SERVICEBUS_CONNECTION_STRING `
+  -e STREAMLIT_CONFIG_DIR=/tmp/.streamlit `
+  -e HOME=/tmp `
+  -e STREAMLIT_BROWSER_GATHERUSAGESTATS=false `
   -p 8501:8501 `
   --cap-drop=ALL --cap-add=NET_BIND_SERVICE `
   --security-opt=no-new-privileges:true `
   localhost/speechflow-backend:latest `
   streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
 
-Write-Host "`n✅ All services started!" -ForegroundColor Green
-Write-Host "`nService URLs:" -ForegroundColor Cyan
-Write-Host "  API:       http://localhost:8000" -ForegroundColor White
-Write-Host "  Dashboard: http://localhost:8501" -ForegroundColor White
-Write-Host "  Postgres:  localhost:5432" -ForegroundColor White
-Write-Host "  Azurite:   localhost:10000" -ForegroundColor White
+# =====================
+# Prepare Azure blobs for workers
+# =====================
+Write-Host "`nEnsuring Azurite containers exist..." -ForegroundColor Cyan
+podman run --rm `
+  --network speech-flow `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
+  -v ${PWD}/speech-flow-infra/storage:/scripts:ro `
+  localhost/speechflow-backend:latest `
+  python /scripts/init_containers.py
 
-Write-Host "`nCheck status with: podman ps" -ForegroundColor Yellow
-Write-Host "View logs with: podman logs <container-name>" -ForegroundColor Yellow
-Write-Host "Stop all with: podman stop speechflow-api speechflow-router speechflow-dashboard speechflow-postgres speechflow-azurite" -ForegroundColor Yellow
+# =====================
+# Start Workers (must finish before UI comes online)
+# =====================
+Write-Host "`nStarting Workers (this builds the worker image, which installs large ML packages like torch)..." -ForegroundColor Cyan
+
+# Build workers image (uses speech-flow-workers/Dockerfile)
+podman build -t localhost/speechflow-workers:latest -f ${PWD}/speech-flow-workers/Dockerfile ${PWD} 2>$null
+
+Write-Host "Starting worker containers: lid, whisper, azure" -ForegroundColor Cyan
+
+# LID Worker
+podman run -d `
+  --name speechflow-worker-lid `
+  --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
+  -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
+  -e RABBITMQ_URL="amqp://guest:guest@rabbitmq:5672/" `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
+  --cap-drop=ALL `
+  --security-opt=no-new-privileges:true `
+  -v ${PWD}/speech-flow-workers:/app `
+  localhost/speechflow-workers:latest `
+  python lid/worker.py
+
+# Whisper Worker
+podman run -d `
+  --name speechflow-worker-whisper `
+  --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
+  -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
+  -e RABBITMQ_URL="amqp://guest:guest@rabbitmq:5672/" `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
+  --cap-drop=ALL `
+  --security-opt=no-new-privileges:true `
+  -v ${PWD}/speech-flow-workers:/app `
+  localhost/speechflow-workers:latest `
+  python whisper/worker.py
+
+# Azure AI Worker
+podman run -d `
+  --name speechflow-worker-azure `
+  --network speech-flow `
+  -e ENVIRONMENT=LOCAL `
+  -e DATABASE_URL=postgresql://user:password@speechflow-postgres:5432/speechflow `
+  -e RABBITMQ_URL="amqp://guest:guest@rabbitmq:5672/" `
+  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
+  --cap-drop=ALL `
+  --security-opt=no-new-privileges:true `
+  -v ${PWD}/speech-flow-workers:/app `
+  localhost/speechflow-workers:latest `
+  python azure_ai/worker.py
+
+Write-Host "`nWorkers started: lid, whisper, azure" -ForegroundColor Green
 
 # =====================
 # Optional: Start UI
@@ -116,14 +187,16 @@ podman run -d `
   localhost/speechflow-ui:latest `
   streamlit run app.py --server.port=8502 --server.address=0.0.0.0
 
-# Ensure Azurite containers exist (raw-audio, results)
-Write-Host "`nEnsuring Azurite containers exist..." -ForegroundColor Cyan
-podman run --rm `
-  --network speech-flow `
-  -e AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://speechflow-azurite:10000/devstoreaccount1;" `
-  -v ${PWD}/speech-flow-infra/storage:/scripts:ro `
-  localhost/speechflow-backend:latest `
-  python /scripts/init_containers.py
-
+Write-Host "`n✅ All services started!" -ForegroundColor Green
 Write-Host "`nService URLs (UI included):" -ForegroundColor Cyan
-Write-Host "  UI:        http://localhost:8502" -ForegroundColor White
+Write-Host "  API:         http://localhost:8000" -ForegroundColor White
+Write-Host "  Dashboard:   http://localhost:8501" -ForegroundColor White
+Write-Host "  UI:          http://localhost:8502" -ForegroundColor White
+Write-Host "  Postgres:    localhost:5432" -ForegroundColor White
+Write-Host "  Azurite:     localhost:10000" -ForegroundColor White
+Write-Host "  RabbitMQ:    localhost:15672 (user: guest, pass: guest)" -ForegroundColor White
+
+Write-Host "`nCheck status with: podman ps" -ForegroundColor Yellow
+Write-Host "View logs with: podman logs <container-name>" -ForegroundColor Yellow
+Write-Host "Stop all with: podman stop speechflow-api speechflow-router speechflow-dashboard speechflow-postgres speechflow-azurite rabbitmq speechflow-ui" -ForegroundColor Yellow
+

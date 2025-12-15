@@ -13,6 +13,8 @@ from config import settings
 from database import SessionLocal
 from models import Job, JobStep
 from sqlalchemy.orm import Session
+from config import settings
+from sqlalchemy.orm import Session
 
 # Import adapters for multi-environment support
 try:
@@ -356,7 +358,8 @@ async def main():
     queue_name = settings.ROUTER_QUEUE_NAME
 
     if USE_ADAPTERS:
-        async with get_message_broker(conn_str) as client:
+        # Explicitly pass as connection_string to avoid positional mismatch
+        async with get_message_broker(connection_string=conn_str) as client:
             receiver = await client.get_queue_receiver(queue_name=queue_name)
             async with receiver:
                 print(f"Listening on {queue_name}...")

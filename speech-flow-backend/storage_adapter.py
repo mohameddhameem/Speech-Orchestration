@@ -142,9 +142,9 @@ class AzureBlobStorageAdapter(StorageAdapter):
                 expiry=datetime.utcnow() + timedelta(hours=1),
             )
 
-            # For Azurite, use localhost endpoint accessible from host
+            # For Azurite, use container hostname for container-to-container communication
             if self.client.account_name == "devstoreaccount1":
-                base_url = "http://localhost:10000/devstoreaccount1"
+                base_url = "http://speechflow-azurite:10000/devstoreaccount1"
             else:
                 base_url = self.client.url.rstrip("/")
 
