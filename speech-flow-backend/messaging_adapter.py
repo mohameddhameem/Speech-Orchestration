@@ -123,6 +123,12 @@ class RabbitMQAdapter(MessageBroker):
             import pika
             # Parse RabbitMQ connection string
             params = pika.URLParameters(self.connection_string)
+            # Improve resiliency: multiple attempts and backoff to avoid startup races
+            params.heartbeat = 600
+            params.blocked_connection_timeout = 300
+            params.socket_timeout = 10
+            params.retry_delay = 5
+            params.connection_attempts = 10
             self.connection = pika.BlockingConnection(params)
             self.channel = self.connection.channel()
     
