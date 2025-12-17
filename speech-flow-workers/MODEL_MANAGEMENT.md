@@ -1,5 +1,23 @@
 # Model Management Guide
 
+## Quick Start
+
+For a fast deployment using runtime downloads (easiest for development):
+
+1.  **Build and Push Images**:
+    ```bash
+    cd speech-flow-workers
+    docker build -t your-registry/speech-flow-workers:latest .
+    docker push your-registry/speech-flow-workers:latest
+    ```
+
+2.  **Deploy**:
+    ```bash
+    kubectl apply -f speech-flow-infra/k8s/
+    ```
+
+For production (persistent caching), see [Deployment Strategies](#deployment-strategies).
+
 ## Overview
 
 The Speech Orchestration system uses a centralized model management approach to handle model downloads, caching, and
