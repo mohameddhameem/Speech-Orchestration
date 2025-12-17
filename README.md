@@ -34,6 +34,7 @@ docker-compose up -d
 ## Architecture
 
 ### Local Mode (`ENVIRONMENT=LOCAL`)
+
 - **Message Queue**: RabbitMQ
 - **Storage**: Local filesystem (`/tmp/speech-flow-storage`)
 - **AI Models**: HuggingFace (BART for summarization, OPUS-MT for translation)
@@ -41,6 +42,7 @@ docker-compose up -d
 - **Internet**: Optional (after initial model download)
 
 ### Azure Mode (`ENVIRONMENT=AZURE`)
+
 - **Message Queue**: Azure Service Bus
 - **Storage**: Azure Blob Storage
 - **AI Models**: Azure OpenAI (GPT-4)
@@ -79,6 +81,7 @@ AZURE_AI_QUEUE_NAME=azure-ai-jobs
 DefaultAzureCredential automatically tries authentication methods in this order:
 
 1. **Environment Variables** (Client Secret)
+
    ```bash
    AZURE_CLIENT_ID=...
    AZURE_CLIENT_SECRET=...
@@ -86,6 +89,7 @@ DefaultAzureCredential automatically tries authentication methods in this order:
    ```
 
 2. **Managed Identity** (recommended for production)
+
    - System-Assigned Managed Identity (SAMI)
    - User-Assigned Managed Identity (UAMI)
 
@@ -124,6 +128,7 @@ speech-flow-workers/
 ## Development
 
 ### Prerequisites
+
 - Docker & Docker Compose
 - 8GB RAM (16GB recommended for workers)
 - 10GB disk space (for AI models)
@@ -156,6 +161,7 @@ Models are auto-downloaded on first use and cached in Docker volume:
 ## Deployment
 
 ### Local Development
+
 ```bash
 cp .env.local.example .env
 # Edit .env to customize settings
@@ -163,6 +169,7 @@ docker-compose -f docker-compose.yaml -f docker-compose.local.yml up -d
 ```
 
 ### Azure (Managed Identity)
+
 ```bash
 # Configure environment variables
 export ENVIRONMENT=AZURE
@@ -175,6 +182,7 @@ docker-compose up -d
 ```
 
 ### Azure (Client Secret)
+
 ```bash
 export ENVIRONMENT=AZURE
 export AZURE_CLIENT_ID=...
@@ -201,17 +209,20 @@ docker-compose up -d
 ## Troubleshooting
 
 **RabbitMQ connection issues:**
+
 ```bash
 docker-compose logs rabbitmq
 docker-compose ps rabbitmq
 ```
 
 **Model download failures:**
+
 - Check internet connection
 - Increase Docker memory limit
 - Verify disk space
 
 **Azure authentication issues:**
+
 ```bash
 # Test Azure CLI login
 az login

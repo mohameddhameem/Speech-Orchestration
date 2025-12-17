@@ -24,7 +24,8 @@ docker push your-registry/speech-flow-workers:latest
 kubectl apply -f speech-flow-infra/k8s/
 ```
 
-**Note**: First startup will be slower as models download. Subsequent restarts will also be slow if pods are rescheduled.
+**Note**: First startup will be slower as models download. Subsequent restarts will also be slow if pods are
+rescheduled.
 
 ## Option 2: Production Deployment (Persistent Cache)
 
@@ -84,6 +85,7 @@ spec:
 ```
 
 Or use the provided example:
+
 ```bash
 # Use as reference to update your existing deployments
 cat speech-flow-infra/k8s/09-worker-deployment-example.yaml
@@ -253,6 +255,7 @@ kubectl patch pvc speech-flow-models -n speech-flow \
 ### Optimize for Your Use Case
 
 **CPU-only deployment**:
+
 ```bash
 # Set for all workers
 WHISPER_DEVICE=cpu
@@ -260,12 +263,14 @@ WHISPER_COMPUTE_TYPE=int8  # Faster on CPU
 ```
 
 **Memory-constrained environment**:
+
 ```bash
 # Use smaller Whisper model
 WHISPER_MODEL_NAME=medium  # or small, base, tiny
 ```
 
 **Multi-region deployment**:
+
 ```bash
 # Pin model versions for consistency
 LID_MODEL_REVISION=abc123  # Use specific commit hash
@@ -274,6 +279,7 @@ LID_MODEL_REVISION=abc123  # Use specific commit hash
 ### Monitoring
 
 Add these metrics to your monitoring:
+
 - Model cache disk usage
 - Worker startup time
 - Model download failures
@@ -282,6 +288,7 @@ Add these metrics to your monitoring:
 ### Maintenance
 
 Schedule regular cache updates:
+
 ```bash
 # The CronJob in 08-model-cache.yaml automatically updates models weekly
 # Adjust schedule as needed
@@ -298,6 +305,7 @@ Schedule regular cache updates:
 ## Support
 
 For issues or questions:
+
 - Check logs: `kubectl logs -f pod-name -n speech-flow`
 - Review documentation: `speech-flow-workers/MODEL_MANAGEMENT.md`
 - Run diagnostics: `python common/preload_models.py --info`

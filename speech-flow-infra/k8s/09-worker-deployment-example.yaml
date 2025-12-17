@@ -1,15 +1,4 @@
-# Example: Worker Deployment with Persistent Model Cache
-#
-# This file shows how to configure workers to use the persistent model cache.
-# Apply these changes to your existing worker deployments (whisper-worker, lid-worker).
-#
-# Key changes:
-# 1. Add MODEL_CACHE_DIR environment variable
-# 2. Mount the persistent volume at /models
-# 3. Set readOnly: true for workers (they only need read access)
-
 ---
-# Example for Whisper Worker
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,10 +16,8 @@ spec:
         app: speech-flow
         component: whisper-worker
     spec:
-      # Use node selector to target GPU nodes
       nodeSelector:
         pool: gpu
-      # Tolerate GPU node taints
       tolerations:
       - key: sku
         operator: Equal
@@ -39,9 +26,10 @@ spec:
       containers:
       - name: whisper-worker
         image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
-        command: ["python", "whisper/worker.py"]
+        command:
+        - python
+        - whisper/worker.py
         env:
-        # Service Bus configuration
         - name: SERVICEBUS_CONNECTION_STRING
           valueFrom:
             secretKeyRef:
@@ -52,7 +40,6 @@ spec:
             configMapKeyRef:
               name: speechflow-config
               key: WHISPER_QUEUE_NAME
-        # Storage configuration
         - name: AZURE_STORAGE_CONNECTION_STRING
           valueFrom:
             secretKeyRef:
@@ -68,28 +55,23 @@ spec:
             configMapKeyRef:
               name: speechflow-config
               key: BLOB_CONTAINER_RESULTS
-        # Router queue
         - name: ROUTER_QUEUE_NAME
           valueFrom:
             configMapKeyRef:
               name: speechflow-config
               key: ROUTER_QUEUE_NAME
-        # Model cache configuration (NEW)
         - name: MODEL_CACHE_DIR
-          value: "/models"
-        # Whisper model configuration (NEW)
+          value: /models
         - name: WHISPER_MODEL_NAME
-          value: "large-v3"
+          value: large-v3
         - name: WHISPER_DEVICE
-          value: "cuda"
+          value: cuda
         - name: WHISPER_COMPUTE_TYPE
-          value: "float16"
-        # Download retry configuration (NEW)
+          value: float16
         - name: MODEL_DOWNLOAD_MAX_RETRIES
-          value: "3"
+          value: '3'
         - name: MODEL_DOWNLOAD_RETRY_DELAY
-          value: "5"
-        # Worker identification (for metrics)
+          value: '5'
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -101,7 +83,7 @@ spec:
         volumeMounts:
         - name: models
           mountPath: /models
-          readOnly: true  # Workers only need read access
+          readOnly: true
         resources:
           requests:
             cpu: 1000m
@@ -116,7 +98,6 @@ spec:
         persistentVolumeClaim:
           claimName: speech-flow-models
 ---
-# Example for LID Worker
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -134,15 +115,15 @@ spec:
         app: speech-flow
         component: lid-worker
     spec:
-      # Use CPU node pool
       nodeSelector:
         pool: cpu
       containers:
       - name: lid-worker
         image: ${CONTAINER_REGISTRY}/speech-flow-workers:${IMAGE_TAG}
-        command: ["python", "lid/worker.py"]
+        command:
+        - python
+        - lid/worker.py
         env:
-        # Service Bus configuration
         - name: SERVICEBUS_CONNECTION_STRING
           valueFrom:
             secretKeyRef:
@@ -153,7 +134,6 @@ spec:
             configMapKeyRef:
               name: speechflow-config
               key: LID_QUEUE_NAME
-        # Storage configuration
         - name: AZURE_STORAGE_CONNECTION_STRING
           valueFrom:
             secretKeyRef:
@@ -169,26 +149,21 @@ spec:
             configMapKeyRef:
               name: speechflow-config
               key: BLOB_CONTAINER_RESULTS
-        # Router queue
         - name: ROUTER_QUEUE_NAME
           valueFrom:
             configMapKeyRef:
               name: speechflow-config
               key: ROUTER_QUEUE_NAME
-        # Model cache configuration (NEW)
         - name: MODEL_CACHE_DIR
-          value: "/models"
-        # LID model configuration (NEW)
+          value: /models
         - name: LID_MODEL_ID
-          value: "facebook/mms-lid-126"
+          value: facebook/mms-lid-126
         - name: LID_MODEL_REVISION
-          value: "main"
-        # Download retry configuration (NEW)
+          value: main
         - name: MODEL_DOWNLOAD_MAX_RETRIES
-          value: "3"
+          value: '3'
         - name: MODEL_DOWNLOAD_RETRY_DELAY
-          value: "5"
-        # Worker identification (for metrics)
+          value: '5'
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -200,7 +175,7 @@ spec:
         volumeMounts:
         - name: models
           mountPath: /models
-          readOnly: true  # Workers only need read access
+          readOnly: true
         resources:
           requests:
             cpu: 500m

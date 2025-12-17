@@ -7,6 +7,7 @@ Operations Dashboard for monitoring and analytics.
 **Purpose:** Monitoring and analytics for operations teams
 
 **Features:**
+
 - Real-time job statistics and metrics
 - Queue depth monitoring
 - Performance analysis by processing step
@@ -16,6 +17,7 @@ Operations Dashboard for monitoring and analytics.
 - Historical trends
 
 **How to run:**
+
 ```bash
 streamlit run app.py
 ```
@@ -23,6 +25,7 @@ streamlit run app.py
 Access at: http://localhost:8501
 
 **Requirements:**
+
 - Access to PostgreSQL database
 - Access to Service Bus (for queue monitoring)
 
@@ -42,5 +45,5 @@ Environment variables:
 
 ## Note
 
-For the **self-service upload UI**, see the separate `speech-flow-ui` project in the repository root.
-That UI is a stateless wrapper around the API for uploading audio files and downloading results.
+For the **self-service upload UI**, see the separate `speech-flow-ui` project in the repository root. That UI is a
+stateless wrapper around the API for uploading audio files and downloading results.

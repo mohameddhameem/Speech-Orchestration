@@ -1,11 +1,11 @@
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: daily-metrics-aggregation
   namespace: speech-flow
 spec:
-  # Run at midnight UTC daily
-  schedule: "0 0 * * *"
+  schedule: 0 0 * * *
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -15,30 +15,29 @@ spec:
         spec:
           restartPolicy: OnFailure
           containers:
-            - name: aggregation-job
-              image: speech-flow-backend:latest
-              command:
-                - python
-                - -m
-                - aggregation.daily_metrics_job
-                - --days-back
-                - "1"
-              env:
-                - name: DATABASE_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: speech-flow-secrets
-                      key: database-url
-              resources:
-                requests:
-                  cpu: "100m"
-                  memory: "256Mi"
-                limits:
-                  cpu: "500m"
-                  memory: "512Mi"
+          - name: aggregation-job
+            image: speech-flow-backend:latest
+            command:
+            - python
+            - -m
+            - aggregation.daily_metrics_job
+            - --days-back
+            - '1'
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: speech-flow-secrets
+                  key: database-url
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
           serviceAccountName: speech-flow-backend
 ---
-# Additional job for backfilling historical data (run manually)
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -49,26 +48,26 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-        - name: backfill-job
-          image: speech-flow-backend:latest
-          command:
-            - python
-            - -m
-            - aggregation.daily_metrics_job
-            - --days-back
-            - "30"  # Backfill last 30 days
-          env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: speech-flow-secrets
-                  key: database-url
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
+      - name: backfill-job
+        image: speech-flow-backend:latest
+        command:
+        - python
+        - -m
+        - aggregation.daily_metrics_job
+        - --days-back
+        - '30'
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: speech-flow-secrets
+              key: database-url
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
       serviceAccountName: speech-flow-backend
   backoffLimit: 3
