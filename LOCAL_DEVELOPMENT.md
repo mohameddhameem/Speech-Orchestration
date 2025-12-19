@@ -75,3 +75,7 @@ docker-compose logs -f api router worker-lid
 ## Switching to Azure
 
 Set `ENVIRONMENT=AZURE` in `.env` and configure Azure credentials. See main README for details.
+
+## Hybrid Development
+
+To run locally but connect to real Azure resources (Service Bus, Blob Storage), see the **[Hybrid Development Guide](HYBRID_DEVELOPMENT.md)**.

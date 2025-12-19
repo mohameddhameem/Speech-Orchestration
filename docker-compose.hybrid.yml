@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # API Service
+  api:
+    build: 
+      context: ./speech-flow-backend
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - DATABASE_URL=${DATABASE_URL}
+      # Service Principal Authentication
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      # Resource Identifiers (instead of connection strings)
+      - SERVICEBUS_NAMESPACE=${SERVICEBUS_NAMESPACE}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - BLOB_CONTAINER_NAME=${BLOB_CONTAINER_NAME:-raw-audio}
+      - RESULTS_CONTAINER_NAME=${RESULTS_CONTAINER_NAME:-results}
+    volumes:
+      - ./speech-flow-backend:/app
+
+  # Router Service
+  router:
+    build:
+      context: ./speech-flow-backend
+      dockerfile: router/Dockerfile
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - DATABASE_URL=${DATABASE_URL}
+      # Service Principal Authentication
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      # Resource Identifiers
+      - SERVICEBUS_NAMESPACE=${SERVICEBUS_NAMESPACE}
+      - ROUTER_QUEUE_NAME=${ROUTER_QUEUE_NAME:-job-events}
+    volumes:
+      - ./speech-flow-backend:/app
+
+  # Dashboard Service
+  dashboard:
+    build:
+      context: ./speech-flow-backend
+      dockerfile: dashboard/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./speech-flow-backend:/app
+
+  # Worker: LID (Language Identification)
+  worker-lid:
+    build:
+      context: ./speech-flow-workers
+      dockerfile: Dockerfile
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - WORKER_TYPE=lid
+      # Service Principal Authentication
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      # Resource Identifiers
+      - SERVICEBUS_NAMESPACE=${SERVICEBUS_NAMESPACE}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - LID_QUEUE_NAME=${LID_QUEUE_NAME:-lid-jobs}
+      - ROUTER_QUEUE_NAME=${ROUTER_QUEUE_NAME:-job-events}
+    volumes:
+      - ./speech-flow-workers:/app
+
+  # Worker: Whisper (Transcription)
+  worker-whisper:
+    build:
+      context: ./speech-flow-workers
+      dockerfile: Dockerfile
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - WORKER_TYPE=whisper
+      # Service Principal Authentication
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      # Resource Identifiers
+      - SERVICEBUS_NAMESPACE=${SERVICEBUS_NAMESPACE}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - WHISPER_QUEUE_NAME=${WHISPER_QUEUE_NAME:-whisper-jobs}
+      - ROUTER_QUEUE_NAME=${ROUTER_QUEUE_NAME:-job-events}
+    volumes:
+      - ./speech-flow-workers:/app
+
+  # Worker: Azure AI (Summarization/Translation)
+  worker-azure-ai:
+    build:
+      context: ./speech-flow-workers
+      dockerfile: Dockerfile
+    environment:
+      - ENVIRONMENT=LOCAL
+      - USE_CLOUD_RESOURCES=true
+      - WORKER_TYPE=azure_ai
+      # Service Principal Authentication
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      # Resource Identifiers
+      - SERVICEBUS_NAMESPACE=${SERVICEBUS_NAMESPACE}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_AI_QUEUE_NAME=${AZURE_AI_QUEUE_NAME:-azure-ai-jobs}
+      - ROUTER_QUEUE_NAME=${ROUTER_QUEUE_NAME:-job-events}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+    volumes:
+      - ./speech-flow-workers:/app

@@ -251,6 +251,7 @@ def get_storage_adapter(account_url: Optional[str] = None, connection_string: Op
         StorageAdapter instance (either Azure Blob Storage or local filesystem)
     """
     environment = os.getenv("ENVIRONMENT", "AZURE").upper()
+    use_cloud_resources = os.getenv("USE_CLOUD_RESOURCES", "false").lower() == "true"
 
     # Check if connection string provided
     if connection_string is None:
@@ -259,15 +260,41 @@ def get_storage_adapter(account_url: Optional[str] = None, connection_string: Op
     # Check if this is Azurite (connection string with devstoreaccount1)
     use_azurite = "devstoreaccount1" in connection_string or "BlobEndpoint=http://" in connection_string
 
-    if environment == "LOCAL" and not use_azurite:
-        # Use local filesystem for local development (no Azurite)
+    if environment == "LOCAL" and not use_azurite and not use_cloud_resources:
+        # Use local filesystem for local development (no Azurite, no Cloud Resources)
         base_path = os.getenv("LOCAL_STORAGE_PATH", "/tmp/speech-flow-storage")
         return LocalFileStorageAdapter(base_path)
     elif use_azurite:
         # Use Azurite with connection string (LOCAL mode with Azurite)
         return AzureBlobStorageAdapter(use_connection_string=True, connection_string=connection_string)
     else:
-        # Production: Use Azure Blob Storage with DefaultAzureCredential
+        # Production OR Hybrid: Use Azure Blob Storage
+        
+        # Check if we should use Service Principal (Client ID/Secret/Tenant)
+        # This is preferred over connection strings for Hybrid/Production if available
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        client_secret = os.getenv("AZURE_CLIENT_SECRET")
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        
+        if client_id and client_secret and tenant_id:
+             # Use DefaultAzureCredential (which picks up these env vars)
+            if account_url is None:
+                account_url = os.getenv("AZURE_STORAGE_ACCOUNT_URL", "")
+                if not account_url:
+                    # Try to construct from account name
+                    name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+                    if name:
+                        account_url = f"https://{name}.blob.core.windows.net"
+                    else:
+                        raise ValueError("AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_ACCOUNT_NAME must be set when using Service Principal authentication")
+            
+            return AzureBlobStorageAdapter(account_url=account_url, use_connection_string=False)
+
+        # If USE_CLOUD_RESOURCES is True, we might be using a connection string or DefaultAzureCredential
+        if use_cloud_resources and connection_string and not use_azurite:
+             return AzureBlobStorageAdapter(use_connection_string=True, connection_string=connection_string)
+
+        # Default to DefaultAzureCredential if no connection string or if explicitly in AZURE mode
         if account_url is None:
             account_url = os.getenv("AZURE_STORAGE_ACCOUNT_URL", "")
         return AzureBlobStorageAdapter(account_url=account_url, use_connection_string=False)

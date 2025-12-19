@@ -278,15 +278,39 @@ def get_message_broker(
         MessageBroker instance (either Azure Service Bus or RabbitMQ)
     """
     environment = os.getenv("ENVIRONMENT", "AZURE").upper()
+    use_cloud_resources = os.getenv("USE_CLOUD_RESOURCES", "false").lower() == "true"
 
-    if environment == "LOCAL":
+    if environment == "LOCAL" and not use_cloud_resources:
         # Use RabbitMQ for local development
         if connection_string is None:
             connection_string = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         return RabbitMQAdapter(connection_string)
     else:
-        # Use Azure Service Bus
-        # Check if connection string provided (for backward compatibility)
+        # Use Azure Service Bus (AZURE mode OR LOCAL mode with USE_CLOUD_RESOURCES)
+        
+        # Check if we should use Service Principal (Client ID/Secret/Tenant)
+        # This is preferred over connection strings for Hybrid/Production if available
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        client_secret = os.getenv("AZURE_CLIENT_SECRET")
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        
+        if client_id and client_secret and tenant_id:
+            # Use DefaultAzureCredential (which picks up these env vars)
+            if fully_qualified_namespace is None:
+                fully_qualified_namespace = os.getenv("SERVICEBUS_FQDN", "")
+                if not fully_qualified_namespace:
+                    # Try to construct from namespace name
+                    ns = os.getenv("SERVICEBUS_NAMESPACE")
+                    if ns:
+                        fully_qualified_namespace = f"{ns}.servicebus.windows.net"
+                    else:
+                        raise ValueError("SERVICEBUS_FQDN or SERVICEBUS_NAMESPACE must be set when using Service Principal authentication")
+            
+            return AzureServiceBusAdapter(
+                fully_qualified_namespace=fully_qualified_namespace, use_connection_string=False
+            )
+
+        # Fallback to connection string logic (legacy or if SPN not provided)
         if connection_string is None:
             connection_string = os.getenv("SERVICEBUS_CONNECTION_STRING", "")
 

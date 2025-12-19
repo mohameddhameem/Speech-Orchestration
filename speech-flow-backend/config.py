@@ -14,6 +14,10 @@ class Settings:
     # Environment mode: LOCAL or AZURE
     ENVIRONMENT: Final[str] = os.getenv("ENVIRONMENT", "AZURE").upper()
 
+    # Hybrid Development Mode: Use Cloud Resources (Azure) while running Locally
+    # If True, will use Azure Service Bus and Blob Storage even if ENVIRONMENT is LOCAL
+    USE_CLOUD_RESOURCES: Final[bool] = os.getenv("USE_CLOUD_RESOURCES", "false").lower() == "true"
+
     # Database Configuration
     DATABASE_URL: Final[str] = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/speechflow")
 
